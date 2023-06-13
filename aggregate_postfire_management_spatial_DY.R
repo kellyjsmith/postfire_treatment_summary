@@ -45,7 +45,7 @@ fires <- fires %>%
 # write.csv(as.data.frame(fires)[,c("VB_ID")], "Data/focal_fires.csv", row.names = FALSE)
 
 # read in focal fires
-focal.fires.input = read.csv("Data/focal_fires.csv", stringsAsFactors=FALSE)
+focal.fires.input = read.csv("Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
 colnames(focal.fires.input)[colnames(focal.fires.input) == "x"] <- "VB_ID"
 fires.focal.names <- unique(focal.fires.input$VB_ID)
 
@@ -172,7 +172,7 @@ facts$sliver <- "no"
 facts[facts$area.post.pre.ratio < facts$stringer.threshold,"sliver"] <- "YES"
 facts$sliver <- as.character(facts$sliver)
 
-# st_write(facts,"../CA_Activity_merged_slivers_fixed.shp",delete_dsn=TRUE)
+# st_write(facts,"../CA_ACTIVITY_Nity_merged_slivers_fixed.shp",delete_dsn=TRUE)
 
 
 ### for each fire, get management history, separately for each area that did not have all the same management applied to it
@@ -197,61 +197,63 @@ for(i in 1:nrow(fires.focal))  {
   facts.fire <- st_intersection(facts, fire.focal)
   facts.fire <- st_buffer(facts.fire, 0)
   
-  facts.fire <- as_Spatial(facts.fire, cast = TRUE)
-  fire.focal <- as_Spatial(fire.focal, cast = TRUE)
+  facts.fire <- as(facts.fire, "Spatial")
+  fire.focal <- as(fire.focal, "Spatial")
   
   setScale(100)
   
   facts.fire <- gBuffer(facts.fire,width=0,byid=TRUE)
+  # facts.fire <- st_buffer(facts.fire, 0)
+  
   
   ## for all of these, except for planting, remove roadside stringers (mostly salvage). This is so we don't consider that as a type of management by which to divide the planting units (thus considering them incomplete and not candidates for survey)
   ## later on, when assigning survey points, we do take into account whether points are going in to roadside salvage
   
   
   ## pull out all FACTS management of interest (defined above)
-  facts.fire.management <- facts.fire[facts.fire$ACTIV %in% manage,]
+  facts.fire.management <- facts.fire[facts.fire$ACTIVITY_N %in% manage,]
   facts.fire.management <- facts.fire.management[facts.fire.management$year >= year.focal,]
   
   ## pull out planting units only
-  facts.fire.planting <- facts.fire[facts.fire$ACTIV %in% planting,]
+  facts.fire.planting <- facts.fire[facts.fire$ACTIVITY_N %in% planting,]
   facts.fire.planting <- facts.fire.planting[facts.fire.planting$year > year.focal,] # must have been planted after fire #! should we also exclude areas that were planted before the fire?
   
   ## pull out all other relevant management (except planting)
-  facts.fire.othermanagement <- facts.fire[facts.fire$ACTIV %in% manage.except.plant,]
+  facts.fire.othermanagement <- facts.fire[facts.fire$ACTIVITY_N %in% manage.except.plant,]
   facts.fire.othermanagement <- facts.fire.othermanagement[facts.fire.othermanagement$year >= year.focal,] # management must have occurred the same year as the fire or later
   
   ## pull out all salvage
-  facts.fire.salvage <- facts.fire[facts.fire$ACTIV %in% c(salvage,"Commercial Thin"),]
+  facts.fire.salvage <- facts.fire[facts.fire$ACTIVITY_N %in% c(salvage,"Commercial Thin"),]
   facts.fire.salvage <- facts.fire.salvage[(facts.fire.salvage$year >= year.focal) & (facts.fire.salvage$year < (year.focal+10)),] #  +10 is because we included salvage coded as comm. thin# management must have occurred the same year as the fire or later
   
   facts.fire.salvage.planting <- rbind(facts.fire.salvage,facts.fire.planting)
   
   ## pull out all salvage + planting
-  #facts.fire.salvage.planting <- facts.fire[(facts.fire$ACTIV %in% c(planting,salvage) | (facts.fire$ACTIV == "Commercial Thin") & facts.fire.salvage$year < (year.focal+10)) & (facts.fire.salvage$year >= year.focal),]
+  #facts.fire.salvage.planting <- facts.fire[(facts.fire$ACTIVITY_N %in% c(planting,salvage) | (facts.fire$ACTIVITY_N == "Commercial Thin") & facts.fire.salvage$year < (year.focal+10)) & (facts.fire.salvage$year >= year.focal),]
   #facts.fire.salvage.planting <- facts.fire.salvage.planting[(facts.fire.salvage$year >= year.focal) & (facts.fire.salvage$year < (year.focal+10)),] # management must have occurred the same year as the fire or later
   
   ## pull out all prep
-  facts.fire.prep <- facts.fire[facts.fire$ACTIV %in% prep,]
+  facts.fire.prep <- facts.fire[facts.fire$ACTIVITY_N %in% prep,]
   facts.fire.prep <- facts.fire.prep[facts.fire.prep$year >= year.focal,] # management must have occurred the same year as the fire or later
   
   ## pull out all release
-  facts.fire.release <- facts.fire[facts.fire$ACTIV %in% release,]
+  facts.fire.release <- facts.fire[facts.fire$ACTIVITY_N %in% release,]
   facts.fire.release <- facts.fire.release[facts.fire.release$year > year.focal,] # management must have occurred the same year as the fire or later
   
   ## pull out all thin
-  facts.fire.thin <- facts.fire[facts.fire$ACTIV %in% thin,]
+  facts.fire.thin <- facts.fire[facts.fire$ACTIVITY_N %in% thin,]
   facts.fire.thin <- facts.fire.thin[facts.fire.thin$year > year.focal,] # management must have occurred the same year as the fire or later
   
   ## pull out all replant
-  facts.fire.replant <- facts.fire[facts.fire$ACTIV %in% replant,]
+  facts.fire.replant <- facts.fire[facts.fire$ACTIVITY_N %in% replant,]
   facts.fire.replant <- facts.fire.replant[facts.fire.replant$year > year.focal,] # management must have occurred the same year as the fire or later
   
   ## pull out all prune
-  facts.fire.prune <- facts.fire[facts.fire$ACTIV %in% prune,]
+  facts.fire.prune <- facts.fire[facts.fire$ACTIVITY_N %in% prune,]
   facts.fire.prune <- facts.fire.prune[facts.fire.prune$year > year.focal,] # management must have occurred the same year as the fire or later
   
   ## pull out all fuel
-  facts.fire.fuel <- facts.fire[facts.fire$ACTIV %in% fuel,]
+  facts.fire.fuel <- facts.fire[facts.fire$ACTIVITY_N %in% fuel,]
   facts.fire.fuel <- facts.fire.fuel[facts.fire.fuel$year >= year.focal,] # management must have occurred the same year as the fire or later
   
   ## split the planting units along the boundaries of the all management plygons (including planting, in case there were multiple overlapping plantings)
@@ -445,7 +447,9 @@ for(i in 1:nrow(fires.focal))  {
     
     # get all overlapping thin units and their associated info
     
+    facts.fire.thin = gBuffer(facts.fire.thin, width = 0)
     if(is.null(facts.fire.thin)) mgmt.over <- NULL else mgmt.over <- raster::intersect(facts.fire.thin,planting.slice)
+  
     mgmt.years <- mgmt.over$year
     mgmt.years.post <- mgmt.years - year.focal
     years.order <- order(mgmt.years.post)
