@@ -1,5 +1,5 @@
 setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly")
-setwd("~/Library/CloudStorage/OneDrive-OregonStateUniversity/Kelly")
+#setwd("~/Library/CloudStorage/OneDrive-OregonStateUniversity/Kelly")
 
 library(sf)
 library(rgeos)
@@ -26,7 +26,6 @@ manage <- c(planting,manage.except.plant)
 ##!! fuels only if done after the first planting
 
 
-
 ### Load fire data ###
 fires <- st_read(dsn = "Data/Spatial/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
 st_precision(fires) <- 100000
@@ -34,7 +33,7 @@ fires <- st_transform(fires,crs=3310)
 st_precision(fires) <- 100000
 fires <- fires[fires$Ig_Year > 1992 & fires$Ig_Year <2018,] # only fires between 1993 - 2017
 
-st_write(fires, "Data/Spatial/fires.shp")
+# st_write(fires, "Output/fires.shp")
 
 #optional output list of fires and years
 # write.csv(as.data.frame(fires)[,c("Incid_Name", "Ig_Year")],"Data/veg_severity_perimeters.csv",row.names=FALSE)
@@ -42,16 +41,20 @@ st_write(fires, "Data/Spatial/fires.shp")
 
 fires <- fires %>%
   mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = ""))
-
-write.csv(as.data.frame(fires)[,c("VB_ID")], "Data/focal_fires.csv", row.names = FALSE)
+  
+# write.csv(as.data.frame(fires)[,c("VB_ID")], "Data/focal_fires.csv", row.names = FALSE)
 
 # read in focal fires
-focal.fires.input <- read.csv("Data/focal_fires.csv",stringsAsFactors=FALSE)
-# fires.focal.names <- unique(focal.fires.input$VB_ID)
+focal.fires.input = read.csv("Data/focal_fires.csv", stringsAsFactors=FALSE)
+colnames(focal.fires.input)[colnames(focal.fires.input) == "x"] <- "VB_ID"
+fires.focal.names <- unique(focal.fires.input$VB_ID)
 
 fires.focal <- fires[fires$VB_ID %in% fires.focal.names,]
-fires.focal = st_buffer(fires, 0)
-fires.focal.names <- unique(focal.fires.input$VB_ID)
+fires.focal = st_buffer(fires.focal, 0)
+fires.focal$Ig_Year <- substr(fires.focal$VB_ID, 1, 4)
+fires.focal$Incid_Name <- substr(fires.focal$VB_ID, 5, nchar(fires.focal$VB_ID))
+fires.focal.names <- focal.fires.input$VB_ID
+
 
 
 ### Load FACTS data ###
@@ -70,11 +73,11 @@ fires.focal <- st_buffer(fires.focal,0)
 fires.focal <- st_buffer(fires.focal,0)
 fires.focal.singlepoly <- st_union(fires.focal)
 fires.focal.singlepoly <- st_buffer(fires.focal.singlepoly,0)
-facts <- st_intersection(facts,fires.focal.singlepoly)
+# facts <- st_intersection(facts,fires.focal.singlepoly)
 
 # st_write(facts, "Data/Spatial/facts.shp")
 # st_write(fires.focal, "Data/Spatial/fires_focal.shp")
-st_write(fires.focal.singlepoly, "Data/Spatial/fires_focal_singlepoly.shp")
+# st_write(fires.focal.singlepoly, "Output/fires_focal_singlepoly.shp")
 
 
 ## Check for reporting discrepancies in reported size vs. actual size
@@ -87,7 +90,7 @@ facts <- facts %>%
                                        ((((SUBUNIT_SI > (GIS_ACRES*.75)) ) | ((SUBUNIT_SI > (GIS_ACRES*.25)) )))))
 
 
-st_write(facts,"../facts_reporting_discrepancies.gpkg")
+# st_write(facts,"Output/facts_reporting_discrepancies.gpkg")
 
 
 # ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
@@ -191,11 +194,11 @@ for(i in 1:nrow(fires.focal))  {
   fire.focal <- st_difference(fire.focal,fires.later) # take only the part that was not burned later
   
   ## get all facts units overlapping it
-  facts.fire <- st_intersection(facts,fire.focal)
-  facts.fire <- st_buffer(facts.fire,0)
+  facts.fire <- st_intersection(facts, fire.focal)
+  facts.fire <- st_buffer(facts.fire, 0)
   
-  facts.fire <- as(facts.fire,"Spatial")
-  fire.focal <- as(fire.focal,"Spatial")
+  facts.fire <- as_Spatial(facts.fire, cast = TRUE)
+  fire.focal <- as_Spatial(fire.focal, cast = TRUE)
   
   setScale(100)
   
