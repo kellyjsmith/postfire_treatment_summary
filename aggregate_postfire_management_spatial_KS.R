@@ -1,5 +1,5 @@
-# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly")
-setwd("~/Library/CloudStorage/OneDrive-OregonStateUniversity/Kelly")
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly")
+# setwd("~/Library/CloudStorage/OneDrive-OregonStateUniversity/Kelly")
 
 library(sf)
 library(rgeos)
@@ -46,6 +46,7 @@ fires <- fires %>%
 
 # read in focal fires
 focal.fires.input = read.csv("Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
+  # focal_fires_ks.csv is manually created from the list of unique fires in postfire_treatments_final.shp
 colnames(focal.fires.input)[colnames(focal.fires.input) == "x"] <- "VB_ID"
 fires.focal.names <- unique(focal.fires.input$VB_ID)
 
@@ -73,7 +74,9 @@ fires.focal <- st_buffer(fires.focal,0)
 fires.focal <- st_buffer(fires.focal,0)
 fires.focal.singlepoly <- st_union(fires.focal)
 fires.focal.singlepoly <- st_buffer(fires.focal.singlepoly,0)
-# facts <- st_intersection(facts,fires.focal.singlepoly)
+# facts <- st_intersection(facts,fires.focal.singlepoly) 
+  # the layer "postfire_treatments_final" is already intersected with the fire layer
+  
 
 # st_write(facts, "Data/Spatial/facts.shp")
 # st_write(fires.focal, "Data/Spatial/fires_focal.shp")
@@ -101,6 +104,8 @@ facts <- facts %>%
 # facts$DATE_C <- ifelse((facts$id %in% facts.overlap.power.ids) & is.na(facts$DATE_C),facts$DATE_A,facts$DATE_C)
 # 
 ## For FACTS units from some fires, do not exclude roadside management stringers
+  
+# !!! stringer threshold is defined here
 facts$stringer.threshold <- 0.1
 fires.exclude <- c("2004POWER","2001STAR","1992CLEVELAND","2004FREDS","1987INDIAN","1987CLARK","1989RACK")
 fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
