@@ -1,150 +1,46 @@
-library(sf)
-library(rgeos)
-library(sp)
-library(rgdal)
-library(raster)
-library(dplyr)
-library(mapview)
-# 
-# setwd("C:/Users/Paco/CorvallisWS/Kelly")
-planting <- c("Plant Trees")
-salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
-prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual","Site Preparation for Planting - Burning","Site Preparation for Planting - Other","Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels")
-release <- c("Tree Release and Weed","Control of Understory Vegetation")
-thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)")
-replant <- c("Fill-in or Replant Trees")
-prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune")
-fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)","Broadcast Burning - Covers a majority of the unit")
+library("sf")
+library("terra")
+library("tidyverse")
+library("mapview")
 
-manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel)
-manage <- c(planting,manage.except.plant)
+prepare_fires <- function(fires,focal_fires){
+  fires <- st_transform(fires,crs=3310) |>
+    filter(fires$Ig_Year > 1992 & fires$Ig_Year <2018) |> 
+    mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = "")) |>
+    filter(VB_ID%in%focal_fires$VB_ID)
+}
 
-##!! prep only if done during/before the first planting
-##!! fuels only if done after the first planting
-
-fires <- st_read(dsn = "~/eclipse-workspace/postfire_treatment_summary/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
-st_precision(fires) <- 100000
-fires <- st_transform(fires,crs=3310)
-st_precision(fires) <- 100000
-fires <- fires[fires$Ig_Year > 1992 & fires$Ig_Year <2018,] # only fires between 1993 - 2017
-fires <- fires %>%
-  mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = ""))
+prepare_facts <- function(facts){
+  facts <- st_transform(facts,crs=3310)
+  facts$id <- 1:nrow(facts)
   
-
-focal.fires.input = read.csv("~/eclipse-workspace/postfire_treatment_summary/focal_fires_ks.csv", stringsAsFactors=FALSE)
-# focal_fires_ks.csv is manually created from the list of unique fires in postfire_treatments_final.shp
-colnames(focal.fires.input)[colnames(focal.fires.input) == "x"] <- "VB_ID"
-fires.focal.names <- unique(focal.fires.input$VB_ID)
-
-fires.focal <- fires[fires$VB_ID %in% fires.focal.names,]
-fires.focal = st_buffer(fires.focal, 0)
-fires.focal$Ig_Year <- substr(fires.focal$VB_ID, 1, 4)
-fires.focal$Incid_Name <- substr(fires.focal$VB_ID, 5, nchar(fires.focal$VB_ID))
-fires.focal.names <- focal.fires.input$VB_ID
-
-
-### Load fire data ###
-facts <- st_read("~/eclipse-workspace/postfire_treatment_summary/facts_consolidated_region_5.gpkg"
-                 , stringsAsFactors = FALSE)
-st_precision(fires) <- 100000
-facts <- st_transform(facts,crs=3310)
-facts$id <- 1:nrow(facts)
-facts$DATE_C <- as.character(facts$DATE_C)
-
-## thin to just the FACTS that overlap focal fires
-# facts <- st_buffer(facts,0)
-fires.focal <- st_buffer(fires.focal,0)
-fires.focal.singlepoly <- st_union(fires.focal) 
-fires.focal.singlepoly <- st_buffer(fires.focal.singlepoly,0)
-facts <- st_intersection(facts,fires.focal.singlepoly) 
-  # the layer "postfire_treatments_final" is already intersected with the fire layer
+  # Manage dates
+  #! or do we want accomplished?
+  #remove management that was not actually performed (e.g., just put up for contract but never logged)
+  facts$DATE_C <- ymd(as.character(facts$DATE_C))
+  facts$year <- year(facts$DATE_C)
+  facts <- facts |> filter(!is.na(DATE_C))
   
-facts <- facts %>%
-  mutate( reporting_discrepancy = ! (((((NBR_UNITS_ > (GIS_ACRES*.75)) ) | ((NBR_UNITS_ > (GIS_ACRES*.25)) ))) |
-                                       ((((SUBUNIT_SI > (GIS_ACRES*.75)) ) | ((SUBUNIT_SI > (GIS_ACRES*.25)) )))))
+  # compute greometric parameters of facts polygons
+  facts$area <- as.numeric(st_area(facts))
+  facts.buffout <- st_buffer(facts,0)
+  facts.perimeters <- st_cast(facts.buffout,"MULTILINESTRING")
+  facts$perim.lengths <- as.numeric(st_length(facts.perimeters))
+  facts$p.a.ratio <- facts$perim.lengths/facts$area
+  
+  # TODO: REPORT DISCREPANCY SUBUNIT_SI MISSING. INVESTIGATE WHAT THAT FIELD WAS
+  # facts <- facts %>%
+  #   mutate( reporting_discrepancy = ! (((((NBR_UNITS_ > (GIS_ACRES*.75)) ) | ((NBR_UNITS_ > (GIS_ACRES*.25)) ))) |
+  #                                        ((((SUBUNIT_SI > (GIS_ACRES*.75)) ) | ((SUBUNIT_SI > (GIS_ACRES*.25)) )))))
 
-
-# st_write(facts,"Output/facts_reporting_discrepancies.gpkg")
-
-
-# ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
-# fire.power <- fires.focal[fires.focal$VB_ID == "2004POWER",]
-# facts.overlap.power <- st_intersection(facts,fire.power)
-# facts.overlap.power.ids <- unique(facts.overlap.power$id)
-# #if it's on the Power fire, and if completed date is blank, make completed date equal to accomplished date. otherwise keep completed date as it was.
-# facts$DATE_C <- ifelse((facts$id %in% facts.overlap.power.ids) & is.na(facts$DATE_C),facts$DATE_A,facts$DATE_C)
-# 
-## For FACTS units from some fires, do not exclude roadside management stringers
-# PACO: Next three blocks are candidates to end up in a function 
-# !!! stringer threshold is defined here PACO: If these fires overlap with other fires, those other fires might get remove as well?
-facts$stringer.threshold <- 0.1
-fires.exclude <- c("2004POWER","2001STAR","1992CLEVELAND","2004FREDS","1987INDIAN","1987CLARK","1989RACK")
-fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
-fire.exclude <- st_union(fire.exclude)
-facts.overlap.exclude <- st_intersection(facts,fire.exclude)
-facts.exclude.ids <- unique(facts.overlap.exclude$id)
-facts[facts$id %in% facts.exclude.ids,"stringer.threshold"] <- 0.00
-
-## For FACTS units from some fires, be more strict about what is a roadside stringer
-fires.exclude <- c("2008GOVERNMENT","1994BIG_CREEK","1990STORMY","2008PIUTE","1992RUBY","2012READING", "2001CRATER")
-fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
-fire.exclude <- st_union(fire.exclude)
-facts.overlap.exclude <- st_intersection(facts,fire.exclude)
-facts.exclude.ids <- unique(facts.overlap.exclude$id)
-facts[facts$id %in% facts.exclude.ids,"stringer.threshold"] <- 0.012
-
-## For FACTS units from some fires, be more strict about what is a roadside stringer
-fires.exclude <- c("2012CHIPS","2000STORRIE","2008RICH")
-fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
-fire.exclude <- st_union(fire.exclude)
-facts <- st_buffer(facts,dist=0)
-fire.exclude <- st_buffer(fire.exclude,dist=0)
-facts.overlap.exclude <- st_intersection(facts,fire.exclude)
-facts.exclude.ids <- unique(facts.overlap.exclude$id)
-facts[facts$id %in% facts.exclude.ids,"stringer.threshold"] <- 0.03
-
-
-## The important year is the year the management was completed
-facts$year <- as.numeric(substr(facts$DATE_C,1,4)) #! or do we want accomplished?
-#remove management that was not actually performed (e.g., just put up for contract but never logged)
-facts <- facts[!is.na(facts$year),]
-# drop areas managed before any of the focal fires
-# facts <- facts[facts$year >= as.numeric(min(fires.focal$Ig_Year)),]
-
-
-### Identify management that is spatial "stringers" (e.g., roadside salvage) so we can avoid putting plots there but not count it as dividing up planting units
-### old approach: on buffered-out polygons (not buffering anymore)
-# compute area
-# compute perimeter
-facts$area <- as.numeric(st_area(facts))
-facts.buffout <- st_buffer(facts,0)
-facts.perimeters <- st_cast(facts.buffout,"MULTILINESTRING")
-facts$perim.lengths <- as.numeric(st_length(facts.perimeters))
-facts$p.a.ratio <- facts$perim.lengths/facts$area
-
-
-# then want to filter to area > 500 000, P-A ratio > .01
-## alternative approach: which units completely disappear when buffered in by 70 m?
-
-# they already have a unique ID (ID column)
-# ids.pre <- unique(facts$id)
-facts$area.prebuffer <- as.numeric(st_area(facts))
-ids.pre <- facts[facts$area.prebuffer != 0,]$id
-facts.buffin <- st_buffer(facts,-60)
-facts$area.postbuffer <- as.numeric(st_area(facts.buffin))
-facts$area.post.pre.ratio <- facts$area.postbuffer/facts$area.prebuffer
-
-# other slivers are ones with super high perimeter to area ratio
-facts$sliver <- "no"
-facts = na.omit(facts)
-facts[facts$area.post.pre.ratio < facts$stringer.threshold,"sliver"] <- "YES"
-facts$sliver <- as.character(facts$sliver)
-
-
+  facts
+  
+}
 
 generate_non_overlapping <- function(polygons,precision=NULL){
   
   polygons<-st_buffer(polygons,0)
+  polygons<- st_make_valid(polygons)
   
   if(!is.null(precision)){
     st_precision(polygons)<-precision
@@ -156,15 +52,16 @@ generate_non_overlapping <- function(polygons,precision=NULL){
   for(i in 1:nrow(pols_pols)){
     
     lut<-rbind(lut,data.frame(intersection_id=i,
-                     orig_id=pols_pols[["origins"]][[i]]))
+                              orig_id=pols_pols[["origins"]][[i]]))
     
   }
   
-  geoms<-pols_pols[["geometry"]][lut$intersection_id]
-  geoms <- st_sf(geoms)
+  geoms <- st_geometry(pols_pols[lut$intersection_id,])
   attributes_df<-polygons[lut$orig_id,]
   st_geometry(attributes_df)<-NULL
-  return(cbind(geoms,attributes_df))
+  result <- cbind(geoms,attributes_df)
+  result <- st_sf(result)
+  return(result)
   
 }
 
@@ -227,7 +124,7 @@ assign_activities<-function(fires,activities){
   fire_fire<-self_intersect(fires,precision=10000)
   fire_activities <- st_intersection(fire_fire,activities)
   fire_activities$assigned_fire<-NA
-
+  
   for(i in 1:nrow(fire_activities)){
     
     fires_i<-fires[fire_activities$origins[[i]],]
@@ -268,6 +165,112 @@ assign_activities<-function(fires,activities){
   }
   return(fire_activities)
 }
+
+# 
+# setwd("C:/Users/Paco/CorvallisWS/Kelly")
+planting <- c("Plant Trees")
+salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
+prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual","Site Preparation for Planting - Burning","Site Preparation for Planting - Other","Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels")
+release <- c("Tree Release and Weed","Control of Understory Vegetation")
+thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)")
+replant <- c("Fill-in or Replant Trees")
+prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune")
+fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)","Broadcast Burning - Covers a majority of the unit")
+
+manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel)
+manage <- c(planting,manage.except.plant)
+
+##!! prep only if done during/before the first planting
+##!! fuels only if done after the first planting
+
+fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
+focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
+fires <- prepare_fires(fires,focal.fires.input)
+fires <- fires[st_is_valid(fires),]
+fires <- generate_non_overlapping(fires,1000)
+fires <- fires[st_is_valid(fires),]
+fires <- fires[st_dimension(fires)==2,]
+
+facts <- st_read("../../Data/facts_r5.shp")
+facts <- prepare_facts(facts)
+facts <- facts[st_is_valid(facts),]
+facts <- generate_non_overlapping(facts,1000)
+
+
+
+
+
+# STOPPED HERE
+# ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
+# fire.power <- fires.focal[fires.focal$VB_ID == "2004POWER",]
+# facts.overlap.power <- st_intersection(facts,fire.power)
+# facts.overlap.power.ids <- unique(facts.overlap.power$id)
+# #if it's on the Power fire, and if completed date is blank, make completed date equal to accomplished date. otherwise keep completed date as it was.
+# facts$DATE_C <- ifelse((facts$id %in% facts.overlap.power.ids) & is.na(facts$DATE_C),facts$DATE_A,facts$DATE_C)
+# 
+## For FACTS units from some fires, do not exclude roadside management stringers
+# PACO: Next three blocks are candidates to end up in a function 
+# !!! stringer threshold is defined here PACO: If these fires overlap with other fires, those other fires might get remove as well?
+facts$stringer.threshold <- 0.1
+fires.exclude <- c("2004POWER","2001STAR","1992CLEVELAND","2004FREDS","1987INDIAN","1987CLARK","1989RACK")
+fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
+fire.exclude <- st_union(fire.exclude)
+facts.overlap.exclude <- st_intersection(facts,fire.exclude)
+facts.exclude.ids <- unique(facts.overlap.exclude$id)
+facts[facts$id %in% facts.exclude.ids,"stringer.threshold"] <- 0.00
+
+## For FACTS units from some fires, be more strict about what is a roadside stringer
+fires.exclude <- c("2008GOVERNMENT","1994BIG_CREEK","1990STORMY","2008PIUTE","1992RUBY","2012READING", "2001CRATER")
+fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
+fire.exclude <- st_union(fire.exclude)
+facts.overlap.exclude <- st_intersection(facts,fire.exclude)
+facts.exclude.ids <- unique(facts.overlap.exclude$id)
+facts[facts$id %in% facts.exclude.ids,"stringer.threshold"] <- 0.012
+
+## For FACTS units from some fires, be more strict about what is a roadside stringer
+fires.exclude <- c("2012CHIPS","2000STORRIE","2008RICH")
+fire.exclude <- fires.focal[fires.focal$VB_ID %in% fires.exclude,]
+fire.exclude <- st_union(fire.exclude)
+facts <- st_buffer(facts,dist=0)
+fire.exclude <- st_buffer(fire.exclude,dist=0)
+facts.overlap.exclude <- st_intersection(facts,fire.exclude)
+facts.exclude.ids <- unique(facts.overlap.exclude$id)
+facts[facts$id %in% facts.exclude.ids,"stringer.threshold"] <- 0.03
+
+
+## The important year is the year the management was completed
+
+# drop areas managed before any of the focal fires
+# facts <- facts[facts$year >= as.numeric(min(fires.focal$Ig_Year)),]
+
+
+### Identify management that is spatial "stringers" (e.g., roadside salvage) so we can avoid putting plots there but not count it as dividing up planting units
+### old approach: on buffered-out polygons (not buffering anymore)
+# compute area
+# compute perimeter
+
+
+
+# then want to filter to area > 500 000, P-A ratio > .01
+## alternative approach: which units completely disappear when buffered in by 70 m?
+
+# they already have a unique ID (ID column)
+# ids.pre <- unique(facts$id)
+facts$area.prebuffer <- as.numeric(st_area(facts))
+ids.pre <- facts[facts$area.prebuffer != 0,]$id
+facts.buffin <- st_buffer(facts,-60)
+facts$area.postbuffer <- as.numeric(st_area(facts.buffin))
+facts$area.post.pre.ratio <- facts$area.postbuffer/facts$area.prebuffer
+
+# other slivers are ones with super high perimeter to area ratio
+facts$sliver <- "no"
+facts = na.omit(facts)
+facts[facts$area.post.pre.ratio < facts$stringer.threshold,"sliver"] <- "YES"
+facts$sliver <- as.character(facts$sliver)
+
+
+
+
 
 fires_activities<-assign_activities(fires,facts)
 fire_activities$area_intersection <- as.double(st_area(fire_activities))
