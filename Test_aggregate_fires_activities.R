@@ -2,6 +2,8 @@ library("sf")
 library("terra")
 library("tidyverse")
 library("mapview")
+library("foreach")
+library("doParallel")
 
 
 prepare_fires <- function(fires,focal_fires){
@@ -21,7 +23,6 @@ prepare_fires <- function(fires,focal_fires){
 prepare_facts <- function(facts){
   
   facts <- st_transform(facts,crs=3310)
-  facts$id <- 1:nrow(facts)
   
   # Manage dates
   #! or do we want accomplished?
@@ -43,16 +44,92 @@ prepare_facts <- function(facts){
   #   mutate( reporting_discrepancy = ! (((((NBR_UNITS_ > (GIS_ACRES*.75)) ) | ((NBR_UNITS_ > (GIS_ACRES*.25)) ))) |
   #                                        ((((SUBUNIT_SI > (GIS_ACRES*.75)) ) | ((SUBUNIT_SI > (GIS_ACRES*.25)) )))))
   
-
+  facts <- facts[st_is_valid(facts),]
+  facts <- facts[st_dimension(facts)==2,]
+  
   return(facts)
 }
 
-
-assign_activities<-function(fires,activities){
+self_intersect <- function(polygons,precission=NULL,area_threshold=1){
   
-  fire_fire<-self_intersect(fires,precision=10000)
-  fire_activities <- st_intersection(fire_fire,activities)
-  fire_activities$assigned_fire<-NA
+  polygons<-st_buffer(polygons,0)
+  if(!is.null(precission)){
+    st_precision(polygons)<-precission
+  }
+
+  polygons<-st_buffer(polygons,0) 
+  polygons<-st_intersection(polygons)
+  polygons<-st_make_valid(polygons)
+  polygons<-polygons[st_is_valid(polygons),]
+  polygons <- polygons[st_dimension(fires)==2,]
+  polygons$area <- as.double(st_area(polygons))
+  
+  return(polygons[polygons$area>area_threshold,])
+  
+}
+
+cross_facts_fire<-function(polygon,fire_fire){
+  tryCatch({
+    i <- polygon$facts_polygon_id
+    fire_activity <- st_intersection(fire_fire,polygon)
+    if(st_dimension(fire_activity)<2 ){
+      return(NULL)
+    }else{
+      fire_activity$intersecting_area <- st_area(fire_activity)
+      return(fire_activity)
+    }
+  },error=function(e){
+    return(NULL)
+  })
+}
+
+intersect_activities<-function(fires,activities,precission,cores){
+  
+  on.exit(try(stopCluster(cl)))
+  fire_fire<-self_intersect(fires,precission=precission)
+  fire_fire <- st_make_valid(fire_fire)
+  fire_fire <- fire_fire[st_is_valid(fire_fire),]
+  fire_fire <- fire_fire[st_dimension(fire_fire)==2,]
+  
+  # creates an id to track where polygons in activities go
+  activities$facts_polygon_id <- 1:nrow(activities)
+  
+  # get polygons intersecting and not intersecting, uses st_intersects that does
+  # not return geometries
+  intersecting <- st_intersects(fire_fire,activities)
+  intersecting <- sort(unique(unlist(intersecting)))
+  not_intersecting <- setdiff(activities$facts_polygon_id,intersecting)
+  
+  # get only polygons that were detected by st_intersects
+  activities <- activities[intersecting,]
+  activities<- activities %>% group_split(facts_polygon_id)
+
+  print("Starting intersection")
+  Sys.time()
+  loaded<-.packages()
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  fire_activities<-foreach(x=activities,
+                           .packages=loaded,
+                           .combine=rbind,
+                           .export = "cross_facts_fire")%dopar%{
+    cross_facts_fire(x,fire_fire)
+  }
+  stopCluster(cl)
+  print("Intersection finished")
+  Sys.time()
+  
+  fire_activities <- st_as_sf(fire_activities)
+  missing_intersecting<-intersecting[!intersecting%in%fire_activities$facts_polygon_id]
+  
+  return(list(fire_activities=fire_activities,
+              fires=fires,
+              fire_fire=fire_fire,
+              activities_not_intersecting,
+              activities_missing_intercepting=missing_intersecting))
+}
+
+assign_activities <- function(fire_activities,fires){
   
   for(i in 1:nrow(fire_activities)){
     
@@ -91,7 +168,6 @@ assign_activities<-function(fires,activities){
     }
     
   }
-  return(fire_activities)
 }
 
 # NOT USED BUT USEFUL
@@ -148,7 +224,7 @@ fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
 facts <- prepare_facts(facts)
-facts_fires <- assign_activities(fires,facts,1000)
+facts_fires <- intersect_activities(fires,facts,1000,cores=50)
 
 
 
