@@ -125,7 +125,7 @@ intersect_activities<-function(fires,activities,precission,cores){
   return(list(fire_activities=fire_activities,
               fires=fires,
               fire_fire=fire_fire,
-              activities_not_intersecting,
+              # activities_not_intersecting,
               activities_missing_intercepting=missing_intersecting))
 }
 
@@ -224,8 +224,9 @@ fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
 facts <- prepare_facts(facts)
-facts_fires <- intersect_activities(fires,facts,1000,cores=50)
-
+# facts_fires <- intersect_activities(fires,facts,1000,cores=50)
+facts_fires <- intersect_activities(fires,facts[sample(1:nrow(facts),500),],1000,cores=10)
+assign = assign_activities(facts_fires$fire_activities,facts_fires$fires)
 
 
 
