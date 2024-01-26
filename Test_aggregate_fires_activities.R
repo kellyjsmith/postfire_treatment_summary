@@ -6,6 +6,9 @@ library("foreach")
 library("doParallel")
 
 
+# FACTS COLUMNS TO KEEP
+keep <- c("DATE_COMPL")
+
 prepare_fires <- function(fires,focal_fires){
   
   fires <- st_transform(fires,crs=3310) |>
@@ -21,36 +24,31 @@ prepare_fires <- function(fires,focal_fires){
 }
 
 prepare_facts <- function(facts){
-  
   facts <- st_transform(facts,crs=3310)
   
   # Manage dates
   #! or do we want accomplished?
   #remove management that was not actually performed (e.g., just put up for contract but never logged)
   # facts <- facts |> filter(!is.na(DATE_C))
-  facts$DATE_C <- ymd(as.character(facts$DATE_C))
-  facts$year <- year(facts$DATE_C)
+  facts$DATE_COMPL <- ymd(as.character(facts$DATE_COMPL))
+  facts$year <- year(facts$DATE_COMPL)
   
   
-  # compute greometric parameters of facts polygons
+  # compute geometric parameters of facts polygons
   facts$activity_area <- as.numeric(st_area(facts))
   facts <- st_buffer(facts,0)
   facts.perimeters <- st_cast(facts,"MULTILINESTRING")
   facts$perim.lengths <- as.numeric(st_length(facts.perimeters))
   facts$p.a.ratio <- facts$perim.lengths/facts$activity_area
   
-  # TODO: REPORT DISCREPANCY SUBUNIT_SI MISSING. INVESTIGATE WHAT THAT FIELD WAS
-  # facts <- facts %>%
-  #   mutate( reporting_discrepancy = ! (((((NBR_UNITS_ > (GIS_ACRES*.75)) ) | ((NBR_UNITS_ > (GIS_ACRES*.25)) ))) |
-  #                                        ((((SUBUNIT_SI > (GIS_ACRES*.75)) ) | ((SUBUNIT_SI > (GIS_ACRES*.25)) )))))
-  
   facts <- facts[st_is_valid(facts),]
   facts <- facts[st_dimension(facts)==2,]
-  
+  # creates an id to track where polygons in activities go
+  facts$facts_polygon_id <- 1:nrow(facts)
   return(facts)
 }
 
-self_intersect <- function(polygons,precission=NULL,area_threshold=1){
+self_intersect <- function(polygons,precission=1000,area_threshold=1){
   
   polygons<-st_buffer(polygons,0)
   if(!is.null(precission)){
@@ -72,7 +70,8 @@ cross_facts_fire<-function(polygon,fire_fire){
   tryCatch({
     i <- polygon$facts_polygon_id
     fire_activity <- st_intersection(fire_fire,polygon)
-    if(st_dimension(fire_activity)<2 ){
+    fire_activity <- fire_activity[st_dimension(fire_activity)>=2,]
+    if(nrow(fire_activity)==0){
       return(NULL)
     }else{
       fire_activity$intersecting_area <- st_area(fire_activity)
@@ -87,21 +86,17 @@ intersect_activities<-function(fires,activities,precission,cores){
   
   on.exit(try(stopCluster(cl)))
   fire_fire<-self_intersect(fires,precission=precission)
-  # fire_fire <- st_make_valid(fire_fire)
-  # fire_fire <- fire_fire[st_is_valid(fire_fire),]
-  # fire_fire <- fire_fire[st_dimension(fire_fire)==2,]
-  # 
-  # creates an id to track where polygons in activities go
-  activities$facts_polygon_id <- 1:nrow(activities)
-  
+  # fire_fire<-self_intersect(fires,area_threshold = 0)
+  facts_polygon_id<-activities$facts_polygon_id
   # get polygons intersecting and not intersecting, uses st_intersects that does
   # not return geometries
   intersecting <- st_intersects(fire_fire,activities)
   intersecting <- sort(unique(unlist(intersecting)))
-  not_intersecting <- setdiff(activities$facts_polygon_id,intersecting)
-  
   # get only polygons that were detected by st_intersects
   activities <- activities[intersecting,]
+  intersecting <- activities$facts_polygon_id
+  not_intersecting <- setdiff(facts_polygon_id,intersecting)
+  
   activities <- activities %>% group_split(facts_polygon_id)
   
   print("Starting intersection")
@@ -125,8 +120,9 @@ intersect_activities<-function(fires,activities,precission,cores){
   return(list(fire_activities=fire_activities,
               fires=fires,
               fire_fire=fire_fire,
-              activities_not_intersecting,
-              activities_missing_intercepting=missing_intersecting))
+              intersecting = intersecting,
+              not_intersecting=not_intersecting,
+              missing_intersecting=missing_intersecting))
 }
 
 assign_activities <- function(fire_activities,fires){
@@ -224,12 +220,16 @@ fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
 facts <- prepare_facts(facts)
+# facts <- facts[,keep]
 facts_fires <- intersect_activities(fires,facts,1000,cores=50)
+# facts_fires <- intersect_activities(fires,slice_sample(facts,n=1000),precission=100,cores=50)
+st_write(facts[facts_fires$missing_intersecting,],"missing_test.gpkg",delete_dsn=TRUE)
 
 
 
+mapview(facts[facts_fires$missing_intersecting,],col.regions="red") + mapview(fires)
 
-
+st_write(facts[facts_fires$missing_intersecting,],"missing_test.gpkg",delete_dsn=TRUE)
 
 # STOPPED HERE
 # ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
