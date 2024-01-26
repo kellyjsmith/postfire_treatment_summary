@@ -4,7 +4,7 @@ library("tidyverse")
 library("mapview")
 library("foreach")
 library("doParallel")
-# kelly here
+
 
 prepare_fires <- function(fires,focal_fires){
   
@@ -87,10 +87,10 @@ intersect_activities<-function(fires,activities,precission,cores){
   
   on.exit(try(stopCluster(cl)))
   fire_fire<-self_intersect(fires,precission=precission)
-  fire_fire <- st_make_valid(fire_fire)
-  fire_fire <- fire_fire[st_is_valid(fire_fire),]
-  fire_fire <- fire_fire[st_dimension(fire_fire)==2,]
-  
+  # fire_fire <- st_make_valid(fire_fire)
+  # fire_fire <- fire_fire[st_is_valid(fire_fire),]
+  # fire_fire <- fire_fire[st_dimension(fire_fire)==2,]
+  # 
   # creates an id to track where polygons in activities go
   activities$facts_polygon_id <- 1:nrow(activities)
   
@@ -102,7 +102,7 @@ intersect_activities<-function(fires,activities,precission,cores){
   
   # get only polygons that were detected by st_intersects
   activities <- activities[intersecting,]
-  activities<- activities %>% group_split(facts_polygon_id)
+  activities <- activities %>% group_split(facts_polygon_id)
 
   print("Starting intersection")
   Sys.time()
