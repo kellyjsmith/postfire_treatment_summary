@@ -3,40 +3,98 @@ library("terra")
 library("tidyverse")
 library("mapview")
 
+
 prepare_fires <- function(fires,focal_fires){
+  
   fires <- st_transform(fires,crs=3310) |>
     filter(fires$Ig_Year > 1992 & fires$Ig_Year <2018) |> 
     mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = "")) |>
     filter(VB_ID%in%focal_fires$VB_ID)
+  
+  fires <- fires[st_is_valid(fires),]
+  fires <- fires[st_dimension(fires)==2,]
+  fires$fire_area <- st_area(fires)
+  fires
+  
 }
 
 prepare_facts <- function(facts){
+  
   facts <- st_transform(facts,crs=3310)
   facts$id <- 1:nrow(facts)
   
   # Manage dates
   #! or do we want accomplished?
   #remove management that was not actually performed (e.g., just put up for contract but never logged)
+  # facts <- facts |> filter(!is.na(DATE_C))
   facts$DATE_C <- ymd(as.character(facts$DATE_C))
   facts$year <- year(facts$DATE_C)
-  facts <- facts |> filter(!is.na(DATE_C))
+  
   
   # compute greometric parameters of facts polygons
-  facts$area <- as.numeric(st_area(facts))
-  facts.buffout <- st_buffer(facts,0)
-  facts.perimeters <- st_cast(facts.buffout,"MULTILINESTRING")
+  facts$activity_area <- as.numeric(st_area(facts))
+  facts <- st_buffer(facts,0)
+  facts.perimeters <- st_cast(facts,"MULTILINESTRING")
   facts$perim.lengths <- as.numeric(st_length(facts.perimeters))
-  facts$p.a.ratio <- facts$perim.lengths/facts$area
+  facts$p.a.ratio <- facts$perim.lengths/facts$activity_area
   
   # TODO: REPORT DISCREPANCY SUBUNIT_SI MISSING. INVESTIGATE WHAT THAT FIELD WAS
   # facts <- facts %>%
   #   mutate( reporting_discrepancy = ! (((((NBR_UNITS_ > (GIS_ACRES*.75)) ) | ((NBR_UNITS_ > (GIS_ACRES*.25)) ))) |
   #                                        ((((SUBUNIT_SI > (GIS_ACRES*.75)) ) | ((SUBUNIT_SI > (GIS_ACRES*.25)) )))))
-
-  facts
   
+
+  return(facts)
 }
 
+
+assign_activities<-function(fires,activities){
+  
+  fire_fire<-self_intersect(fires,precision=10000)
+  fire_activities <- st_intersection(fire_fire,activities)
+  fire_activities$assigned_fire<-NA
+  
+  for(i in 1:nrow(fire_activities)){
+    
+    fires_i<-fires[fire_activities$origins[[i]],]
+    if(nrow(fires_i)==1){
+      # print("Single fire")
+      # print(fires_i$Ig_Year)
+      # print(fire_activities$year[i])
+      if(fires_i$Ig_Year>fire_activities$year[i]){
+        # print(NA)
+        fire_activities[i,"assigned_fire"]<-NA
+      }else{
+        # print(fires_i$VB_ID)
+        fire_activities[i,"assigned_fire"]<-fires_i$VB_ID
+      }
+      
+    }else{
+      print("Multiple fire, activities")
+      print(fire_activities[i,])
+      print("Fires")
+      print(fires_i)
+      fires_i<-fires_i[fires_i$Ig_Year<= fire_activities$year[i],]
+      if(nrow(fires_i)==0){
+        print(NA)
+        fire_activities[i,"assigned_fire"]<-NA
+      }else{
+        print(fires_i)
+        fires_i$diff_time<-fire_activities$year[i]-fires_i$Ig_Year
+        fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
+        # print(dim(fires_i))
+        fires_i<-fires_i[fires_i$BurnBndAc==max(fires_i$BurnBndAc),]
+        print(fires_i)
+        fire_activities[i,"assigned_fire"]<-fires_i$VB_ID
+      }
+      
+    }
+    
+  }
+  return(fire_activities)
+}
+
+# NOT USED BUT USEFUL
 generate_non_overlapping <- function(polygons,precision=NULL){
   
   polygons<-st_buffer(polygons,0)
@@ -65,108 +123,9 @@ generate_non_overlapping <- function(polygons,precision=NULL){
   
 }
 
-self_intersect <- function(polygons,precision=NULL,area_threshold=1){
-  polygons<-st_buffer(polygons,0)
-  if(!is.null(precision)){
-    st_precision(polygons)<-precision
-  }
-  polygons<-st_buffer(polygons,0)
-  polygons<-st_intersection(polygons)
-  polygons<-st_make_valid(polygons)
-  polygons$area <- as.double(st_area(polygons))
-  polygons<-polygons[st_is_valid(polygons),]
-  return(polygons[polygons$area>area_threshold,])
-}
 
-cross_single<-function(self_intersects,activities,precision=NULL){
-  
-  self_intersects<-self_intersects[self_intersects$n.overlaps==1,]
-  self_intersects<-st_make_valid(self_intersects)
-  activities<-st_make_valid(activities)
-  if(!is.null(precision)){
-    self_intersects<-st_buffer(self_intersects,0)
-    st_precision(self_intersects)<-precision
-    
-    activities<-st_buffer(activities,0)
-    st_precision(activities)<-precision
-  }
-  to_combine<-list()
-  res<-lapply(1:nrow(self_intersects),function(x){
-    print(x)
-    out<-try({
-      activities_fire<-st_intersection(self_intersects[x,],activities)
-      if(nrow(activities_fire)==0){return(NULL)}
-      activities_fire$n.overlaps<-NULL
-      activities_fire$origins<-NULL
-      activities_fire<-st_make_valid(activities_fire)
-      if(!is.null(precision)){
-        activities_fire<-st_buffer(activities_fire,0)
-        st_precision(activities_fire)<-precision
-      }
-      
-      activities_fire<-st_intersection(activities_fire)
-    })
-    if(inherits(out,"try-error")){
-      return(NULL)
-    }else{
-      return(out)
-    }
-    
-  })
-  
-  res<-do.call(rbind,res)
-  list(single_single=res[res$n.overlaps==1,],
-       single_multiple=res[res$n.overlaps>1,])
-}
 
-assign_activities<-function(fires,activities){
-  
-  fire_fire<-self_intersect(fires,precision=10000)
-  fire_activities <- st_intersection(fire_fire,activities)
-  fire_activities$assigned_fire<-NA
-  
-  for(i in 1:nrow(fire_activities)){
-    
-    fires_i<-fires[fire_activities$origins[[i]],]
-    if(nrow(fires_i)==1){
-      # print("Single fire")
-      # print(fires_i$Ig_Year)
-      # print(fire_activities$year[i])
-      if(fires_i$Ig_Year>fire_activities$year[i]){
-        # print(NA)
-        fire_activities[i,"assigned_fire"]<-NA
-      }else{
-        # print(fires_i$VB_ID)
-        fire_activities[i,"assigned_fire"]<-fires_i$VB_ID
-      }
-      
-    }else{
-      
-      print("Multiple fire, activities")
-      print(fire_activities[i,])
-      print("Fires")
-      print(fires_i)
-      fires_i<-fires_i[fires_i$Ig_Year<= fire_activities$year[i],]
-      if(nrow(fires_i)==0){
-        print(NA)
-        fire_activities[i,"assigned_fire"]<-NA
-      }else{
-        print(fires_i)
-        fires_i$diff_time<-fire_activities$year[i]-fires_i$Ig_Year
-        fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-        # print(dim(fires_i))
-        fires_i<-fires_i[fires_i$BurnBndAc==max(fires_i$BurnBndAc),]
-        print(fires_i)
-        fire_activities[i,"assigned_fire"]<-fires_i$VB_ID
-      }
-      
-    }
-    
-  }
-  return(fire_activities)
-}
 
-# 
 # setwd("C:/Users/Paco/CorvallisWS/Kelly")
 planting <- c("Plant Trees")
 salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
@@ -186,15 +145,11 @@ manage <- c(planting,manage.except.plant)
 fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
 focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
 fires <- prepare_fires(fires,focal.fires.input)
-fires <- fires[st_is_valid(fires),]
-fires <- generate_non_overlapping(fires,1000)
-fires <- fires[st_is_valid(fires),]
-fires <- fires[st_dimension(fires)==2,]
 
 facts <- st_read("../../Data/facts_r5.shp")
 facts <- prepare_facts(facts)
-facts <- facts[st_is_valid(facts),]
-facts <- generate_non_overlapping(facts,1000)
+facts_fires <- assign_activities(fires,facts,1000)
+
 
 
 
