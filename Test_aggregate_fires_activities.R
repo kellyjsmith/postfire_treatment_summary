@@ -3,6 +3,9 @@ library("terra")
 library("tidyverse")
 library("mapview")
 
+# setwd("C:/Users/Paco/CorvallisWS/Kelly")
+# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/")
+
 prepare_fires <- function(fires,focal_fires){
   fires <- st_transform(fires,crs=3310) |>
     filter(fires$Ig_Year > 1992 & fires$Ig_Year <2018) |> 
@@ -17,9 +20,9 @@ prepare_facts <- function(facts){
   # Manage dates
   #! or do we want accomplished?
   #remove management that was not actually performed (e.g., just put up for contract but never logged)
-  facts$DATE_C <- ymd(as.character(facts$DATE_C))
-  facts$year <- year(facts$DATE_C)
-  facts <- facts |> filter(!is.na(DATE_C))
+  facts$DATE_C <- ymd(as.character(facts$DATE_COMPL))
+  facts$year <- year(facts$DATE_COMPL)
+  facts <- facts |> filter(!is.na(DATE_COMPL))
   
   # compute greometric parameters of facts polygons
   facts$area <- as.numeric(st_area(facts))
@@ -183,7 +186,16 @@ manage <- c(planting,manage.except.plant)
 ##!! prep only if done during/before the first planting
 ##!! fuels only if done after the first planting
 
-fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
+# fires_temp = tempfile()
+# unzip(zipfile = "C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Data/mtbs_wildfires_CA_1993_2017.zip", exdir = fires_temp)
+# fires = read_sf(fires_temp)
+# facts_temp = tempfile()
+# unzip(zipfile = "C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Data/facts_r5.zip", exdir = facts_temp)
+# facts = read_sf(facts_temp)
+# focal.fires.input = read.csv("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
+# 
+
+fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.zip", stringsAsFactors = FALSE)
 focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
 fires <- prepare_fires(fires,focal.fires.input)
 fires <- fires[st_is_valid(fires),]
