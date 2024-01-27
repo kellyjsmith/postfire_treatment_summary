@@ -7,9 +7,10 @@ library("doParallel")
 
 
 # FACTS COLUMNS TO KEEP -- Kelly - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
-keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY","LOCAL_QUAL",
-          "METHOD_C","METHOD","NBR_UNITS_","NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT",
-          "PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
+keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","year","FISCAL_Y_2","GIS_ACRES",
+          "ACTIVITY_C","ACTIVITY","LOCAL_QUAL","METHOD","NBR_UNITS_",
+          "NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA",
+          "FS_UNIT_ID")
 
 prepare_fires <- function(fires,focal_fires){
   
@@ -132,9 +133,9 @@ assign_activities <- function(fire_activities,fires){
     
     fires_i<-fires[fire_activities$origins[[i]],]
     if(nrow(fires_i)==1){
-      # print("Single fire")
-      # print(fires_i$Ig_Year)
-      # print(fire_activities$year[i])
+      print("Single fire")
+      print(fires_i$Ig_Year)
+      print(fire_activities$year[i])
       if(fires_i$Ig_Year>fire_activities$year[i]){
         # print(NA)
         fire_activities[i,"assigned_fire"]<-NA
@@ -166,6 +167,8 @@ assign_activities <- function(fire_activities,fires){
     
   }
 }
+
+
 
 # NOT USED BUT USEFUL
 generate_non_overlapping <- function(polygons,precision=NULL){
@@ -218,11 +221,11 @@ fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
 facts <- prepare_facts(facts)
-# facts <- facts[,keep]
-facts_fires <- intersect_activities(fires,facts,1000,cores=50)
+facts <- facts[,keep]
+# facts_fires <- intersect_activities(fires,facts,1000,cores=50)
 # facts_fires <- intersect_activities(fires,slice_sample(facts,n=1000),precission=100,cores=50)
-# facts_fires <- intersect_activities(fires,facts[sample(1:nrow(facts),500),],1000,cores=10)
-# assign = assign_activities(facts_fires$fire_activities,facts_fires$fires)
+facts_fires <- intersect_activities(fires,facts[sample(1:nrow(facts),500),],1000,cores=10)
+assign = assign_activities(facts_fires$fire_activities,facts_fires$fires)
 
 st_write(facts[facts_fires$missing_intersecting,],"missing_test.gpkg",delete_dsn=TRUE)
 
