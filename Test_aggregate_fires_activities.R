@@ -29,8 +29,7 @@ prepare_facts <- function(facts){
   facts <- st_transform(facts,crs=3310)
   
   # Manage dates
-  #! or do we want accomplished?
-  #remove management that was not actually performed (e.g., just put up for contract but never logged)
+  # Only include records with a completed date
   # facts <- facts |> filter(!is.na(DATE_C))
   facts$DATE_COMPL <- ymd(as.character(facts$DATE_COMPL))
   facts$year <- year(facts$DATE_COMPL)
@@ -198,9 +197,6 @@ generate_non_overlapping <- function(polygons,precision=NULL){
 }
 
 
-
-
-# setwd("C:/Users/Paco/CorvallisWS/Kelly")
 planting <- c("Plant Trees")
 salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
 prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual","Site Preparation for Planting - Burning","Site Preparation for Planting - Other","Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels")
@@ -225,6 +221,9 @@ facts <- prepare_facts(facts)
 # facts <- facts[,keep]
 facts_fires <- intersect_activities(fires,facts,1000,cores=50)
 # facts_fires <- intersect_activities(fires,slice_sample(facts,n=1000),precission=100,cores=50)
+# facts_fires <- intersect_activities(fires,facts[sample(1:nrow(facts),500),],1000,cores=10)
+# assign = assign_activities(facts_fires$fire_activities,facts_fires$fires)
+
 st_write(facts[facts_fires$missing_intersecting,],"missing_test.gpkg",delete_dsn=TRUE)
 
 
