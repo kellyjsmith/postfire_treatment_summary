@@ -244,7 +244,7 @@ fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
 facts <- prepare_facts(facts)
-# facts <- facts[,keep]
+facts <- facts[,keep]
 # facts_fires <- prepare_intersect(fires,facts,1000)
 facts_fires <- intersect_activities(facts,fires,precission=1000,50)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
