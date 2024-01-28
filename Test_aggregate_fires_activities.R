@@ -5,7 +5,6 @@ library("mapview")
 library("foreach")
 library("doParallel")
 
-
 # FACTS COLUMNS TO KEEP -- Kelly - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
 keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY","LOCAL_QUAL",
           "METHOD_C","METHOD","NBR_UNITS_","NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT",
