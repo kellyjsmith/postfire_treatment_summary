@@ -6,8 +6,9 @@ library("foreach")
 library("doParallel")
 
 # FACTS COLUMNS TO KEEP -- Kelly - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
-keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY","LOCAL_QUAL",
-          "METHOD_C","METHOD","NBR_UNITS_","NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT",
+keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY",
+          "ACTIVITY_R","ACTIVITY_S","ACTIVITY_U","LOCAL_QUAL",
+          "METHOD_COD","METHOD","NBR_UNITS_","NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT",
           "PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
 prepare_fires <- function(fires,focal_fires){
@@ -243,8 +244,10 @@ focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=F
 fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
-facts <- prepare_facts(facts)
+facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel),]
 facts <- facts[,keep]
+facts <- prepare_facts(facts)
+
 # facts_fires <- prepare_intersect(fires,facts,1000)
 facts_fires <- intersect_activities(facts,fires,precission=1000,50)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
