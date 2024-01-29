@@ -196,10 +196,7 @@ intersect_activities<-function(activities,fires,precission,cores){
   fires_activities <- foreach(
     x = result_parts,
     .packages = loaded,
-    .combine = rbind,
-  ) %dopar% {
-    do.call(rbind, x)
-  }
+    .combine = rbind) %dopar% {do.call(rbind, x)}
   
   stopCluster(cl)
   print("Intersection finished")
