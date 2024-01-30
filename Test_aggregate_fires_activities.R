@@ -252,8 +252,19 @@ facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_ac
 
 saveRDS(facts_fires,"facts_fires.RDS")
 
+assigned_activities<-readRDS("facts_fires.RDS")$assigned_activities
 
-
+# CREATE IS_* fields
+fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","manage.except.plant","manage")
+for(i in fields){
+  print(i)
+  categories <- eval(parse(text=i))
+  print(categories)
+  is_cat <- assigned_activities$ACTIVITY%in%categories
+  print(is_cat[1:20])
+  
+  assigned_activities[,paste0("IS_",i)]<-is_cat
+} 
 
 
 
