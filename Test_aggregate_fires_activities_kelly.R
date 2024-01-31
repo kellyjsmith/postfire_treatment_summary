@@ -245,9 +245,9 @@ facts <- facts[,keep]
 facts <- prepare_facts(facts)
 
 # facts_fires <- prepare_intersect(fires,facts,1000)
-facts_fires <- intersect_activities(facts,fires,precission=1000,50)
+facts_fires <- intersect_activities(facts,fires,precission=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
-                                                   facts_fires$fires,50)
+                                                   facts_fires$fires,10)
 
 saveRDS(facts_fires,"facts_fires.RDS")
 
