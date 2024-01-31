@@ -58,7 +58,7 @@ prepare_facts <- function(facts){
   return(facts)
 }
 
-self_intersect <- function(polygons,precission=1000,area_threshold=1){
+self_intersect <- function(polygons,precission=1000,area_threshold=0){
   
   polygons<-st_buffer(polygons,0)
   if(!is.null(precission)){
@@ -258,17 +258,29 @@ generate_non_overlapping <- function(polygons,precision=NULL){
   
 }
 
-# setwd("C:/Users/Paco/CorvallisWS/Kelly")
-planting <- c("Plant Trees")
-salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
-prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual","Site Preparation for Planting - Burning","Site Preparation for Planting - Other","Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels")
-release <- c("Tree Release and Weed","Control of Understory Vegetation")
-thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)")
-replant <- c("Fill-in or Replant Trees")
-prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune")
-fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)","Broadcast Burning - Covers a majority of the unit")
-
-manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel)
+planting <- c("Plant Trees") 
+salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)",
+             "Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
+             "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
+             "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
+prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
+          "Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other",
+          "Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning",
+          "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels") 
+release <- c("Tree Release and Weed","Control of Understory Vegetation") 
+thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
+replant <- c("Fill-in or Replant Trees") 
+prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
+fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
+          "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
+          "Broadcast Burning - Covers a majority of the unit") 
+cert <- c("Certification-Planted", "TSI Certification - Release/weeding",
+         "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
+         "TSI Certification - Cleaning", "TSI Certification - Pruning") 
+survey <- c("Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
+           "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared")
+manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert)
 manage <- c(planting,manage.except.plant)
 
 ##!! prep only if done during/before the first planting
