@@ -336,7 +336,7 @@ ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+
   scale_x_continuous("Year activity",breaks=seq(1998,2022,by=4)) +
   scale_y_continuous("Acres")
 
-
+# merge earth engine severity MTBS TODO: Move to new file
 
 # STOPPED HERE
 # ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
