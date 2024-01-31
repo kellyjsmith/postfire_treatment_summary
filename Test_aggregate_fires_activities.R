@@ -12,13 +12,23 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","A
 
 prepare_fires <- function(fires,focal_fires){
   
-  fires <- st_transform(fires,crs=3310) |>
-    filter(fires$Ig_Year > 1992 & fires$Ig_Year <2018) |> 
-    mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = "")) |>
-    filter(VB_ID%in%focal_fires$VB_ID)
-  
+  fires <- fires |> mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = ""))|>
+    filter(VB_ID %in% focal_fires$VB_ID) |>
+    filter(Ig_Year > 1992 & Ig_Year < 2018) 
   fires <- fires[st_is_valid(fires),]
-  fires <- fires[st_dimension(fires)==2,]
+  fires <- fires[st_dimension(fires)==2,] 
+  fires <- fires |>
+    group_by(VB_ID) |> summarize(
+      geometry = st_union(geometry),
+      Ig_Year = first(Ig_Year),
+      nIg_Years = n_distinct(Ig_Year),
+      Incid_Name = first(Incid_Name),
+      nIncid_Name = n_distinct(Incid_Name),
+      sumBurnBndAc = sum(BurnBndAc),
+      sumFire_Acres = sum(Fire_Acres)
+    )
+  fires <- st_transform(fires,crs=3310)
+  
   fires$fire_area <- st_area(fires)
   fires
   
@@ -59,7 +69,7 @@ self_intersect <- function(polygons,precission=1000,area_threshold=1){
   polygons<-st_intersection(polygons)
   polygons<-st_make_valid(polygons)
   polygons<-polygons[st_is_valid(polygons),]
-  polygons <- polygons[st_dimension(fires)==2,]
+  polygons <- polygons[st_dimension(polygons)==2,]
   polygons$area <- as.double(st_area(polygons))
   
   return(polygons[polygons$area>area_threshold,])
@@ -106,10 +116,10 @@ assign_activities <- function(fires_activities,fires){
       fires_activities[i,"flag"]<-1
     }else{
       fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
-      fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-      fires_i<-fires_i[fires_i$BurnBndAc==max(fires_i$BurnBndAc),]
-      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID[1]
       fires_activities[i,"flag"]<-length(fires_i$VB_ID)
+      fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
+      fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
+      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID[1]
     }
     
   }
@@ -219,6 +229,35 @@ intersect_activities<-function(activities,fires,precission,cores){
   )
 }
 
+# NOT USED BUT USEFUL
+generate_non_overlapping <- function(polygons,precision=NULL){
+  
+  polygons<-st_buffer(polygons,0)
+  polygons<- st_make_valid(polygons)
+  
+  if(!is.null(precision)){
+    st_precision(polygons)<-precision
+  }
+  
+  pols_pols<-st_intersection(polygons)
+  
+  lut<-data.frame(intersection_id=c(),orig_id=c())
+  for(i in 1:nrow(pols_pols)){
+    
+    lut<-rbind(lut,data.frame(intersection_id=i,
+                              orig_id=pols_pols[["origins"]][[i]]))
+    
+  }
+  
+  geoms <- st_geometry(pols_pols[lut$intersection_id,])
+  attributes_df<-polygons[lut$orig_id,]
+  st_geometry(attributes_df)<-NULL
+  result <- cbind(geoms,attributes_df)
+  result <- st_sf(result)
+  return(result)
+  
+}
+
 # setwd("C:/Users/Paco/CorvallisWS/Kelly")
 planting <- c("Plant Trees")
 salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
@@ -251,8 +290,22 @@ facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_ac
 
 saveRDS(facts_fires,"facts_fires.RDS")
 
-assigned_activities<-readRDS("facts_fires.RDS")$assigned_activities
+facts_fires <- readRDS("facts_fires.RDS")
+assigned_activities <- facts_fires$assigned_activities
+fires <- facts_fires$fires
+# CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
+assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","VB_ID")]
+assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
+
+# CREATING GEOMETRY FIELDS (activity_fire_area is the important AREA)
+assigned_activities$activity_fire_area <- st_area(assigned_activities)
+assigned_activities_perimeters <- st_cast(assigned_activities,"MULTILINESTRING")
+assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))
+assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire_perim_length/assigned_activities$activity_fire_area
+# CREATING difference between activity and fire year
+assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
+
 # CREATE IS_* fields
 fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","manage.except.plant","manage")
 for(i in fields){
@@ -260,205 +313,28 @@ for(i in fields){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
-
 saveRDS(assigned_activities,"assigned_activities.RDS")
 
+a <- assigned_activities |>filter((diff_years<10) & (IS_planting==TRUE | IS_prep==TRUE |IS_release==TRUE))
+a <- pivot_longer(a,cols=starts_with("IS_"),names_to = "type",values_to = "IS_type")
+a <- a[a$IS_type,]
+a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
+
+ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
+  facet_wrap(~type,ncol=3) +
+  geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
+  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1998,2018,by=2))
+
+a$activity_year <- a$Ig_Year +a$diff_years
+b <- group_by(a,activity_year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
+
+ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+ 
+  aes(x=activity_year,y=as.numeric(activity_fire_area)/4046.86) + 
+  facet_wrap(~type,ncol=3) + geom_point() + geom_smooth(method="lm") +
+  scale_x_continuous("Year activity",breaks=seq(1998,2022,by=4)) +
+  scale_y_continuous("Acres")
 
 
-
-# NOT USED BUT USEFUL
-prepare_intersect2 <- function(fires,activities,precission){
-  
-  fires_fires<-self_intersect(fires,precission=precission)
-  # fires_fires<-self_intersect(fires,area_threshold = 0)
-  facts_polygon_id<-activities$facts_polygon_id
-  # get polygons intersecting and not intersecting, uses st_intersects that does
-  # not return geometries
-  intersecting <- st_intersects(fires_fires,activities)
-  intersecting <- sort(unique(unlist(intersecting)))
-  # get only polygons that were detected by st_intersects
-  activities <- activities[intersecting,]
-  intersecting <- activities$facts_polygon_id
-  not_intersecting <- setdiff(facts_polygon_id,intersecting)
-  
-  activities <- activities %>% group_split(facts_polygon_id)
-  
-  return(list(activities=activities,
-              fires =fires,
-              fires_fires = fires_fires,
-              intersecting=intersecting,
-              not_intersecting=not_intersecting))
-  
-}
-
-intersect_activities2<-function(activities_prepared,cores){
-  
-  on.exit(try(stopCluster(cl)))
-  
-  fires_fires <- activities_prepared$fires_fires
-  
-  print("Starting intersection")
-  print(Sys.time())
-  loaded<-.packages()
-  cl <- makeCluster(cores)
-  registerDoParallel(cl)
-  fires_activities<-foreach(x=activities_prepared$activities,
-                           .packages=loaded,
-                           .export = "cross_facts_fire")%dopar%{
-                             cross_facts_fire(x,fires_fires)
-                           }
-  stopCluster(cl)
-  print("Intersection finished")
-  print(Sys.time())
-  
-  fires_activities <- st_as_sf(do.call(rbind,fires_activities))
-  
-  missing_intersecting<-activities_prepared$intersecting[
-    !activities_prepared$intersecting%in%fires_activities$facts_polygon_id]
-  
-  activities_prepared$fires_activities <- fires_activities
-  activities_prepared$missing_intersecting <- missing_intersecting
-  
-  return(activities_prepared)
-}
-
-assign_activities2 <- function(fire_activities,fires){
-  
-  for(i in 1:nrow(fire_activities)){
-    
-    fires_i<-fires[fire_activities$origins[[i]],]
-    if(nrow(fires_i)==1){
-      # print("Single fire")
-      # print(fires_i$Ig_Year)
-      # print(fire_activities$year[i])
-      if(fires_i$Ig_Year>fire_activities$year[i]){
-        # print(NA)
-        fire_activities[i,"assigned_fire"]<-NA
-      }else{
-        # print(fires_i$VB_ID)
-        fire_activities[i,"assigned_fire"]<-fires_i$VB_ID
-      }
-      
-    }else{
-      print("Multiple fire, activities")
-      print(fire_activities[i,])
-      print("Fires")
-      print(fires_i)
-      fires_i<-fires_i[fires_i$Ig_Year<= fire_activities$year[i],]
-      if(nrow(fires_i)==0){
-        print(NA)
-        fire_activities[i,"assigned_fire"]<-NA
-      }else{
-        print(fires_i)
-        fires_i$diff_time<-fire_activities$year[i]-fires_i$Ig_Year
-        fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-        # print(dim(fires_i))
-        fires_i<-fires_i[fires_i$BurnBndAc==max(fires_i$BurnBndAc),]
-        print(fires_i)
-        fire_activities[i,"assigned_fire"]<-fires_i$VB_ID
-      }
-      
-    }
-    
-  }
-}
-
-generate_non_overlapping <- function(polygons,precision=NULL){
-  
-  polygons<-st_buffer(polygons,0)
-  polygons<- st_make_valid(polygons)
-  
-  if(!is.null(precision)){
-    st_precision(polygons)<-precision
-  }
-  
-  pols_pols<-st_intersection(polygons)
-  
-  lut<-data.frame(intersection_id=c(),orig_id=c())
-  for(i in 1:nrow(pols_pols)){
-    
-    lut<-rbind(lut,data.frame(intersection_id=i,
-                              orig_id=pols_pols[["origins"]][[i]]))
-    
-  }
-  
-  geoms <- st_geometry(pols_pols[lut$intersection_id,])
-  attributes_df<-polygons[lut$orig_id,]
-  st_geometry(attributes_df)<-NULL
-  result <- cbind(geoms,attributes_df)
-  result <- st_sf(result)
-  return(result)
-  
-}
-
-assign_activity <- function(activity,fires){
-  
-  fires_i<-fires[activity$origins[[i]],]
-  if(nrow(fires_i)==1){
-    # print("Single fire")
-    # print(fires_i$Ig_Year)
-    # print(activity$year[i])
-    if(fires_i$Ig_Year>activity$year[i]){
-      # print(NA)
-      activity[i,"assigned_fire"]<-NA
-    }else{
-      # print(fires_i$VB_ID)
-      activity[i,"assigned_fire"]<-fires_i$VB_ID
-    }
-    
-  }else{
-    # print("Multiple fire, activities")
-    # print(activity[i,])
-    # print("Fires")
-    # print(fires_i)
-    fires_i<-fires_i[fires_i$Ig_Year<= activity$year[i],]
-    if(nrow(fires_i)==0){
-      # print(NA)
-      activity[i,"assigned_fire"]<-NA
-    }else{
-      # print(fires_i)
-      fires_i$diff_time<-activity$year[i]-fires_i$Ig_Year
-      fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-      # print(dim(fires_i))
-      fires_i<-fires_i[fires_i$BurnBndAc==max(fires_i$BurnBndAc),]
-      print(fires_i)
-      activity[i,"assigned_fire"]<-fires_i$VB_ID
-    }
-    
-  }
-}
-
-planting <- c("Plant Trees")
-salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)","Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)")
-prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual","Site Preparation for Planting - Burning","Site Preparation for Planting - Other","Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels")
-release <- c("Tree Release and Weed","Control of Understory Vegetation")
-thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)")
-replant <- c("Fill-in or Replant Trees")
-prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune")
-fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging","Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)","Broadcast Burning - Covers a majority of the unit")
-
-
-
-
-
-
-
-fire_fire <- facts_fires$fire_fire
-activities <- facts_fires$activities
-
-facts_fires <- intersect_activities(facts_fires,20)
-facts_fires <- intersect_activities(fires,slice_sample(facts,n=10000),1000,cores=50)
-# facts_fires <- intersect_activities(fires,slice_sample(facts,n=1000),precission=100,cores=50)
-# facts_fires <- intersect_activities(fires,facts[sample(1:nrow(facts),500),],1000,cores=10)
-# assign = assign_activities(facts_fires$fire_activities,facts_fires$fires)
-
-st_write(facts[facts_fires$missing_intersecting,],"missing_test.gpkg",delete_dsn=TRUE)
-
-
-
-mapview(facts[facts_fires$missing_intersecting,],col.regions="red") + mapview(fires)
-
-st_write(facts[facts_fires$missing_intersecting,],"missing_test.gpkg",delete_dsn=TRUE)
 
 # STOPPED HERE
 # ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
