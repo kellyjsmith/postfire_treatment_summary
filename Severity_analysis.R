@@ -36,7 +36,7 @@ summaries <- map_dfr(unique(assigned_activities$Ig_Year),function(year){
   print(year)
   activities_year <- assigned_activities[assigned_activities$Ig_Year==year,]
   severity_year <- severity[[paste0("mtbs_CONUS_",year,"_Severity")]]
-  map_dfr(1:nrow(assigned_activities),function(x){
+  map_dfr(1:nrow(activities_year),function(x){
     print(x)
     activitiy_year_x <- activities_year[x,]
     activitiy_year_x_severity <- crop(severity_year,ext(activitiy_year_x))
