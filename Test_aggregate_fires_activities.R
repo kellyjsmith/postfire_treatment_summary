@@ -95,7 +95,7 @@ cross_facts_fire<-function(polygon,fires_fires){
 assign_activities <- function(fires_activities,fires){
   
   for(i in 1:nrow(fires_activities)){
-    # if activvity year is NA there is no way to assign fires
+    # if activity year is NA there is no way to assign fires
     if(is.na(fires_activities$year[i])){
       fires_activities[i,"assigned_fire"]<-NA
       fires_activities[i,"flag"]<-0
@@ -351,6 +351,14 @@ ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+
 # merge earth engine severity MTBS TODO: Move to new file
 
 # STOPPED HERE
+
+######################## end of Paco's ###########################################
+
+
+
+
+
+
 # ## For FACTS units from the Power Fire, we need to set completed date = accomplished date ##
 # fire.power <- fires.focal[fires.focal$VB_ID == "2004POWER",]
 # facts.overlap.power <- st_intersection(facts,fire.power)
