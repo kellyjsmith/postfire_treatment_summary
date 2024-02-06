@@ -10,8 +10,10 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","A
           "ACTIVITY_R","ACTIVITY_S","ACTIVITY_U","LOCAL_QUAL","METHOD","NBR_UNITS_",
           "NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
-prepare_fires <- function(fires,focal_fires){
+# Function to prepare fire layer
+prepare_fires <- function(fires, focal_fires){
   
+  # Add YearName ID, filter for years, check polygon validity, add geometric attributes
   fires <- fires |> mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = ""))|>
     filter(VB_ID %in% focal_fires$VB_ID) |>
     filter(Ig_Year > 1992 & Ig_Year < 2018) 
@@ -34,31 +36,33 @@ prepare_fires <- function(fires,focal_fires){
   
 }
 
+# Function to prepare FACTS layer
 prepare_facts <- function(facts){
   facts <- st_transform(facts,crs=3310)
   
-  # Manage dates
-  # Only include records with a completed date
+  # Manage dates -- only include records with a completed date and add "year" field
   # facts <- facts |> filter(!is.na(DATE_C))
   facts$DATE_COMPL <- ymd(as.character(facts$DATE_COMPL))
   facts$year <- year(facts$DATE_COMPL)
   
-  
-  # compute geometric parameters of facts polygons
+  # Compute geometric parameters of facts polygons
   facts$activity_area <- as.numeric(st_area(facts))
   facts <- st_buffer(facts,0)
   facts.perimeters <- st_cast(facts,"MULTILINESTRING")
   facts$perim.lengths <- as.numeric(st_length(facts.perimeters))
   facts$p.a.ratio <- facts$perim.lengths/facts$activity_area
   
+  # Check to determine feature is a valid polygon
   facts <- facts[st_is_valid(facts),]
   facts <- facts[st_dimension(facts)==2,]
-  # creates an id to track where polygons in activities go
+  
+  # Create an ID to track where polygons in activities go
   facts$facts_polygon_id <- 1:nrow(facts)
   return(facts)
 }
 
-self_intersect <- function(polygons,precission=1000,area_threshold=0){
+# Function to self intersect fire polygons
+self_intersect <- function(polygons, precission=1000, area_threshold=0){
   
   polygons<-st_buffer(polygons,0)
   if(!is.null(precission)){
@@ -76,10 +80,11 @@ self_intersect <- function(polygons,precission=1000,area_threshold=0){
   
 }
 
-cross_facts_fire<-function(polygon,fires_fires){
+# Function to intersect facts_polygon_id values with self-intersected fire layer
+cross_facts_fire<-function(polygon, fires_fires){
   tryCatch({
     i <- polygon$facts_polygon_id
-    fire_activity <- st_intersection(fires_fires,polygon)
+    fire_activity <- st_intersection(fires_fires, polygon)
     fire_activity <- fire_activity[st_dimension(fire_activity)>=2,]
     if(nrow(fire_activity)==0){
       return(NULL)
@@ -92,7 +97,8 @@ cross_facts_fire<-function(polygon,fires_fires){
   })
 }
 
-assign_activities <- function(fires_activities,fires){
+# Function for summarizing fires_activities for overlapping fires
+assign_activities <- function(fires_activities, fires){
   
   for(i in 1:nrow(fires_activities)){
     # if activity year is NA there is no way to assign fires
@@ -126,7 +132,8 @@ assign_activities <- function(fires_activities,fires){
   return(fires_activities)
 }
 
-assign_activities_parallel <- function(fires_activities,fires,cores){
+# Parallel processing
+assign_activities_parallel <- function(fires_activities, fires, cores){
   
   on.exit(try(stopCluster(cl)))
   n  <-  dim(fires_activities)[1]
@@ -154,14 +161,19 @@ assign_activities_parallel <- function(fires_activities,fires,cores){
   
 }
 
-intersect_activities<-function(activities,fires,precission,cores){
+# Function to intersect facts layer with fire layer
+  # call "precission" to remove topology errors and "cores" for parallel processing
+intersect_activities <- function(activities, fires, precission, cores){
   
   on.exit(try(stopCluster(cl)))
-  fires_fires  <-  self_intersect(fires, precission  =  precission)
-  # fires_fires<-self_intersect(fires,area_threshold = 0)
-  facts_polygon_id  <-  activities$facts_polygon_id
-  # get polygons intersecting and not intersecting, uses st_intersects that does
-  # not return geometries
+  
+  # Self-intersect fire layer and create ID to track facts polygon
+  fires_fires <- self_intersect(fires, precission  =  precission)
+  # fires_fires<-self_intersect(fires, area_threshold = 0)
+  facts_polygon_id <- activities$facts_polygon_id
+  
+  # Return all intersecting and non-intersecting facts polygons within the fire layer
+    # st_intersect does not return geometries, so must be added later
   intersecting <- st_intersects(fires_fires, activities)
   intersecting <- sort(unique(unlist(intersecting)))
   # get only polygons that were detected by st_intersects
@@ -169,6 +181,8 @@ intersect_activities<-function(activities,fires,precission,cores){
   intersecting <- activities$facts_polygon_id
   not_intersecting <- setdiff(facts_polygon_id, intersecting)
   
+    # Split the dataframe containing intersecting facts activities by facts_polygon_id;
+    # 
   activities <- activities %>% group_split(facts_polygon_id)
   
   print("Starting intersection")
@@ -352,7 +366,10 @@ ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+
 
 # STOPPED HERE
 
-######################## end of Paco's ###########################################
+
+
+
+######################## end of Paco's script ###################################
 
 
 
