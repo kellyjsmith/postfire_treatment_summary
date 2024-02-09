@@ -15,16 +15,16 @@ a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(act
 ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
   facet_wrap(~type,ncol=3) +
   geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
-  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1998,2018,by=2)) + 
-  xlim(c(0,5)) + ylim(c(1998,2016))
+  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) + 
+  xlim(c(0,15)) + ylim(c(1993,2017))
 
-# 
-# ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
-#   facet_wrap(~type,ncol=5) +
-#   geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
-#   scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1998,2018,by=2)) + 
-#   xlim(c(0,5)) + ylim(c(1998,2016))
+ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
+  facet_wrap(~type,ncol=3) +
+  geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
+  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) + 
+  xlim(c(0,15)) + ylim(c(1993,2017))
 
+hist()
 
 a$activity_year <- a$Ig_Year +a$diff_years
 b <- group_by(a,activity_year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
