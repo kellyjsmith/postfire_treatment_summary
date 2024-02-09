@@ -129,13 +129,14 @@ assign_activities <- function(fires_activities, fires){
     }
     
   }
-  
-  # Group by activity type and summarize the activity_fire_area
-  fires_activities <- fires_activities %>%
-    group_by(ACTIVITY) %>%
-    arrange(DATE_COMPL) %>%
-    mutate(activity_overlap_order = dense_rank(year)) %>%
-    summarize(cumul_activity_fire_area = sum(activity_fire_area), .groups = 'drop')
+  # 
+  # # Group by activity type and summarize the activity_fire_area
+  # fires_activities <- fires_activities %>%
+  #   group_by(ACTIVITY) %>%
+  #   arrange(DATE_COMPL) %>%
+  #   mutate(activity_overlap_order = dense_rank(year)) %>%
+  #   mutate(cumul_activity_fire_area = summarize(sum(fires_activities$intersecting_area))) %>%
+  #   ungroup()
   
   return(fires_activities)
 }
@@ -318,9 +319,9 @@ facts <- facts[,keep]
 facts <- prepare_facts(facts)
 
 # facts_fires <- prepare_intersect(fires,facts,1000)
-facts_fires <- intersect_activities(facts,fires,precission=1000,50)
+facts_fires <- intersect_activities(facts,fires,precission=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
-                                                   facts_fires$fires,50)
+                                                   facts_fires$fires,10)
 
 saveRDS(facts_fires,"facts_fires.RDS")
 
@@ -372,6 +373,7 @@ ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+
   scale_y_continuous("Acres")
 
 # merge earth engine severity MTBS TODO: Move to new file
+
 
 # STOPPED HERE
 
