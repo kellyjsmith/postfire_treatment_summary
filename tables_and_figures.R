@@ -4,7 +4,7 @@ library("sf")
 library("terra")
 library("tidyverse")
 
-assigned_activities = readRDS(assigned_activities.RDS)
+assigned_activities = readRDS("assigned_activities.RDS")
 
 # a <- assigned_activities |>filter((diff_years<10) & (IS_planting==TRUE | IS_prep==TRUE |IS_release==TRUE))
 a <- pivot_longer(assigned_activities,cols=starts_with("IS_"),names_to = "type",values_to = "IS_type")
