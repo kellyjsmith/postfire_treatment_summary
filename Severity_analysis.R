@@ -40,7 +40,11 @@ summaries <- map_dfr(unique(assigned_activities$Ig_Year),function(year){
   map_dfr(1:nrow(activities_year),function(x){
     print(x)
     activitiy_year_x <- activities_year[x,]
-    # if(st_geometry(activities_year))
+    if(st_geometry(activitiy_year_x)=="GEOMETRYCOLLECTION"){
+      a<-st_cast(activitiy_year_x)
+      a <- a[st_dimension(a)==2,]
+      activitiy_year_x<- st_cast(a,"MULTIPOLYGON")
+    }
     activitiy_year_x_severity <- crop(severity_year,ext(activitiy_year_x))
     activitiy_year_x_severity <- mask(activitiy_year_x_severity,activitiy_year_x)
     levels(activitiy_year_x_severity)<- data.frame(id=c(0:7),severity=c(0:7))
