@@ -300,6 +300,7 @@ manage <- c(planting,manage.except.plant)
 ##!! prep only if done during/before the first planting
 ##!! fuels only if done after the first planting
 
+# TODO: change input fires to last mtbs version from GEE, remove focal fires & rerun
 # Read in Fire and FACTS datasets
 fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
 focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
@@ -350,7 +351,7 @@ for(i in fields){
 } 
 saveRDS(assigned_activities,"assigned_activities.RDS")
 
-
+# gross vs net areas
 assigned_activities<-readRDS("assigned_activities.RDS")
 comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
                               diff_years =unique(assigned_activities$diff_years))
