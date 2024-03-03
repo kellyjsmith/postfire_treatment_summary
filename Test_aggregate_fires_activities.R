@@ -373,10 +373,9 @@ net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
           return(NULL)
         }else{
           result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
-            summarize(geometry=st_union(geometry),n_dissolved=n())
-          result$Ig_Year<-x
-          result$diff_years<-y
-          result$ref_year <-x+y
+            summarize(geometry=st_union(geometry),n_dissolved=n(),
+                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
+          result$ref_year <-result$Ig_Year+result$diff_years
           result$net_area <- st_area(result)
           return(result)
         }
@@ -393,10 +392,9 @@ gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                                return(NULL)
                              }else{
                                result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
-                                 summarize(gross_area=sum(st_area(geometry)))
-                               result$Ig_Year<-x
-                               result$diff_years<-y
-                               result$ref_year <-x+y
+                                 summarize(gross_area=sum(st_area(geometry)),
+                                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
+                               result$ref_year <-result$Ig_Year+result$diff_years
                                return(result)
                              }
                            },assigned_activities=assigned_activities)
