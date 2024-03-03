@@ -80,8 +80,6 @@ self_intersect <- function(polygons, precission=1000, area_threshold=0){
   
 }
 
-
-
 # Function to intersect facts_polygon_id values with self-intersected fire layer
 cross_facts_fire<-function(polygon, fires_fires){
   tryCatch({
@@ -98,7 +96,6 @@ cross_facts_fire<-function(polygon, fires_fires){
     return(NULL)
   })
 }
-
 
 # Function to intersect facts layer with fire layer
 # call "precission" to remove topology errors and "cores" for parallel processing
@@ -182,8 +179,6 @@ intersect_activities <- function(activities, fires, precission, cores){
   )
 }
 
-
-
 # Function for summarizing fires_activities for overlapping fires
 assign_activities <- function(fires_activities, fires){
   
@@ -248,8 +243,6 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
   
 }
 
-
-
 # NOT USED BUT USEFUL
 generate_non_overlapping <- function(polygons,precision=NULL){
   
@@ -306,7 +299,6 @@ manage <- c(planting,manage.except.plant)
 
 ##!! prep only if done during/before the first planting
 ##!! fuels only if done after the first planting
-
 
 # Read in Fire and FACTS datasets
 fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
