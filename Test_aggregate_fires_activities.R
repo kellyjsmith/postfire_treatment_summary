@@ -380,13 +380,33 @@ net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
           return(NULL)
         }else{
           result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
-            summarize(geometry=st_union(geometry))
+            summarize(geometry=st_union(geometry),n_dissolved=n())
           result$Ig_Year<-x
           result$diff_years<-y
+          result$ref_year <-x+y
           result$net_area <- st_area(result)
           return(result)
         }
                        },assigned_activities=assigned_activities)
+
+
+gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+                           function(x,y,assigned_activities){
+                             
+                             filtered <- assigned_activities |> 
+                               filter(Ig_Year ==x & diff_years==y)
+                             
+                             if(dim(filtered)[1]==0){
+                               return(NULL)
+                             }else{
+                               result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                                 summarize(gross_area=sum(st_area(geometry)))
+                               result$Ig_Year<-x
+                               result$diff_years<-y
+                               result$ref_year <-x+y
+                               return(result)
+                             }
+                           },assigned_activities=assigned_activities)
 
 
 
