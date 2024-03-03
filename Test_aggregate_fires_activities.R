@@ -6,7 +6,7 @@ library("foreach")
 library("doParallel")
 
 # FACTS COLUMNS TO KEEP -- Kelly - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
-keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY",
+keep <- c("FACTS_ID","SU ID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY",
           "ACTIVITY_R","ACTIVITY_S","ACTIVITY_U","LOCAL_QUAL","METHOD","NBR_UNITS_",
           "NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
@@ -357,6 +357,38 @@ for(i in fields){
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
 saveRDS(assigned_activities,"assigned_activities.RDS")
+
+
+assigned_activities<-readRDS("assigned_activities.RDS")
+comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
+                              diff_years =unique(assigned_activities$diff_years))
+types <- c("planting","salvage","prep","release","thin","replant","prune","fuel")
+assigned_activities$ACTIVITY_TYPE<-NA
+for(i in types){
+  print(i)
+  categories <- eval(parse(text=i))
+  is_cat <- assigned_activities$ACTIVITY%in%categories
+  assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
+} 
+net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+                       function(x,y,assigned_activities){
+                         
+        filtered <- assigned_activities |> 
+                      filter(Ig_Year ==x & diff_years==y)
+        
+        if(dim(filtered)[1]==0){
+          return(NULL)
+        }else{
+          result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+            summarize(geometry=st_union(geometry))
+          result$Ig_Year<-x
+          result$diff_years<-y
+          result$net_area <- st_area(result)
+          return(result)
+        }
+                       },assigned_activities=assigned_activities)
+
+
 
 # a <- assigned_activities |>filter((diff_years<10) & (IS_planting==TRUE | IS_prep==TRUE |IS_release==TRUE))
 a <- pivot_longer(assigned_activities,cols=starts_with("IS_"),names_to = "type",values_to = "IS_type")
