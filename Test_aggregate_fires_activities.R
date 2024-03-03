@@ -408,6 +408,3 @@ gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                              }
                            },assigned_activities=assigned_activities)
 
-
-
-######################## end of Paco's script ###################################
