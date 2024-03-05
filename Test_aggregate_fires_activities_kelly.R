@@ -40,7 +40,7 @@ prepare_fires <- function(fires, focal_fires){
 prepare_facts <- function(facts){
   facts <- st_transform(facts,crs=3310)
   
-  # Manage dates -- only include records with a completed date and add "year" field
+  # Manage date fields -- only include records with a completed date and add "year"
   # facts <- facts |> filter(!is.na(DATE_C))
   facts$DATE_COMPL <- ymd(as.character(facts$DATE_COMPL))
   facts$year <- year(facts$DATE_COMPL)
@@ -80,6 +80,8 @@ self_intersect <- function(polygons, precission=1000, area_threshold=0){
   
 }
 
+
+
 # Function to intersect facts_polygon_id values with self-intersected fire layer
 cross_facts_fire<-function(polygon, fires_fires){
   tryCatch({
@@ -97,81 +99,10 @@ cross_facts_fire<-function(polygon, fires_fires){
   })
 }
 
-# Function for summarizing fires_activities for overlapping fires
-assign_activities <- function(fires_activities, fires){
-  
-  for(i in 1:nrow(fires_activities)){
-    # if activity year is NA there is no way to assign fires
-    if(is.na(fires_activities$year[i])){
-      fires_activities[i,"assigned_fire"]<-NA
       fires_activities[i,"flag"]<-0
-      next
-    }
-    
-    fires_i<-fires[fires_activities$origins[[i]],]
-    fires_i<-fires_i[fires_i$Ig_Year<= fires_activities$year[i],]
-    
-    if(nrow(fires_i)==0){
-      fires_activities[i,"assigned_fire"]<-NA
-      fires_activities[i,"flag"]<-0
-      next
-    }
-    
-    if(nrow(fires_i)==1){
-      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID
-      fires_activities[i,"flag"]<-1
-    }else{
-      fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
-      fires_activities[i,"flag"]<-length(fires_i$VB_ID)
-      fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-      fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
-      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID[1]
-    }
-    
-  }
-  # 
-  # # Group by activity type and summarize the activity_fire_area
-  # fires_activities <- fires_activities %>%
-  #   group_by(ACTIVITY) %>%
-  #   arrange(DATE_COMPL) %>%
-  #   mutate(activity_overlap_order = dense_rank(year)) %>%
-  #   mutate(cumul_activity_fire_area = summarize(sum(fires_activities$intersecting_area))) %>%
-  #   ungroup()
-  
-  return(fires_activities)
-}
-
-# Parallel processing
-assign_activities_parallel <- function(fires_activities, fires, cores){
-  
-  on.exit(try(stopCluster(cl)))
-  n  <-  dim(fires_activities)[1]
-  group_ids  <-
-    data.frame(ids  =  1:n, group  =  sample(1:cores, n, replace  =  TRUE))
-  result_parts <- lapply(1:cores, function(x) {
-    ids  <-  group_ids[group_ids$group  ==  x, "ids"]
-    fires_activities[ids,]
-  })
-  
-  loaded  <-  .packages()
-  cl <- makeCluster(cores)
-  registerDoParallel(cl)
-  fires_activities <- foreach(
-    x = result_parts,
-    .packages = loaded,
-    .combine = rbind,
-    .export = c("assign_activities")
-  ) %dopar% {
-    assign_activities(x,fires)
-  }
-  stopCluster(cl)
-  
-  fires_activities
-  
-}
 
 # Function to intersect facts layer with fire layer
-  # call "precission" to remove topology errors and "cores" for parallel processing
+# call "precission" to remove topology errors and "cores" for parallel processing
 intersect_activities <- function(activities, fires, precission, cores){
   
   on.exit(try(stopCluster(cl)))
@@ -182,7 +113,7 @@ intersect_activities <- function(activities, fires, precission, cores){
   facts_polygon_id <- activities$facts_polygon_id
   
   # Return all intersecting and non-intersecting facts polygons within the fire layer
-    # st_intersect does not return geometries, so must be added later
+  # st_intersect does not return geometries, so must be added later
   intersecting <- st_intersects(fires_fires, activities)
   intersecting <- sort(unique(unlist(intersecting)))
   # get only polygons that were detected by st_intersects
@@ -190,7 +121,7 @@ intersect_activities <- function(activities, fires, precission, cores){
   intersecting <- activities$facts_polygon_id
   not_intersecting <- setdiff(facts_polygon_id, intersecting)
   
-  # Split the dataframe containing intersecting facts activities by facts_polygon_id;
+  # Split the data frame containing intersecting facts activities by facts_polygon_id;
   # 
   activities <- activities %>% group_split(facts_polygon_id)
   
@@ -252,6 +183,74 @@ intersect_activities <- function(activities, fires, precission, cores){
   )
 }
 
+
+
+# Function for summarizing fires_activities for overlapping fires
+assign_activities <- function(fires_activities, fires){
+  
+  for(i in 1:nrow(fires_activities)){
+    # if activity year is NA there is no way to assign fires
+    if(is.na(fires_activities$year[i])){
+      fires_activities[i,"assigned_fire"]<-NA
+      fires_activities[i,"flag"]<-0
+      next
+    }
+    
+    fires_i<-fires[fires_activities$origins[[i]],]
+    fires_i<-fires_i[fires_i$Ig_Year<= fires_activities$year[i],]
+    
+    if(nrow(fires_i)==0){
+      fires_activities[i,"assigned_fire"]<-NA
+      fires_activities[i,"flag"]<-0
+      next
+    }
+    
+    if(nrow(fires_i)==1){
+      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID
+      fires_activities[i,"flag"]<-1
+    }else{
+      fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
+      fires_activities[i,"flag"]<-length(fires_i$VB_ID)
+      fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
+      fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
+      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID[1]
+    }
+    
+  }
+  return(fires_activities)
+}
+
+# Parallel processing
+assign_activities_parallel <- function(fires_activities, fires, cores){
+  
+  on.exit(try(stopCluster(cl)))
+  n  <-  dim(fires_activities)[1]
+  group_ids  <-
+    data.frame(ids  =  1:n, group  =  sample(1:cores, n, replace  =  TRUE))
+  result_parts <- lapply(1:cores, function(x) {
+    ids  <-  group_ids[group_ids$group  ==  x, "ids"]
+    fires_activities[ids,]
+  })
+  
+  loaded  <-  .packages()
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  fires_activities <- foreach(
+    x = result_parts,
+    .packages = loaded,
+    .combine = rbind,
+    .export = c("assign_activities")
+  ) %dopar% {
+    assign_activities(x,fires)
+  }
+  stopCluster(cl)
+  
+  fires_activities
+  
+}
+
+
+
 # NOT USED BUT USEFUL
 generate_non_overlapping <- function(polygons,precision=NULL){
   
@@ -309,16 +308,26 @@ manage <- c(planting,manage.except.plant)
 ##!! prep only if done during/before the first planting
 ##!! fuels only if done after the first planting
 
+
+# Read in Fire and FACTS datasets
 fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
 focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
 fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
+
+# Filter out old (pre-fire) records
+facts <- facts %>%
+  filter(FISCAL_Y_2 > 1992)
+
+# Keep only reforestation-related activities and important fields
 facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel),]
 facts <- facts[,keep]
+
+# Run function to prepare dataset
 facts <- prepare_facts(facts)
 
-# facts_fires <- prepare_intersect(fires,facts,1000)
+# Conduct intersection and assign activities
 facts_fires <- intersect_activities(facts,fires,precission=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                    facts_fires$fires,10)
@@ -328,7 +337,6 @@ saveRDS(facts_fires,"facts_fires.RDS")
 facts_fires <- readRDS("facts_fires.RDS")
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
-
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
 assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","VB_ID")]
@@ -373,7 +381,6 @@ ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+
   scale_y_continuous("Acres")
 
 # merge earth engine severity MTBS TODO: Move to new file
-
 
 # STOPPED HERE
 
