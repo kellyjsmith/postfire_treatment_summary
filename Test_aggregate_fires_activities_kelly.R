@@ -99,7 +99,6 @@ cross_facts_fire<-function(polygon, fires_fires){
   })
 }
 
-      fires_activities[i,"flag"]<-0
 
 # Function to intersect facts layer with fire layer
 # call "precission" to remove topology errors and "cores" for parallel processing
@@ -358,6 +357,12 @@ for(i in fields){
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
 saveRDS(assigned_activities,"assigned_activities.RDS")
+
+# Convert to polygons
+assigned_activities_polygons <- st_cast(assigned_activities_perimeters, "POLYGON")
+
+# Write to shapefile
+st_write(assigned_activities_polygons, "../../Data/postfire_reforestation.shp")
 
 # a <- assigned_activities |>filter((diff_years<10) & (IS_planting==TRUE | IS_prep==TRUE |IS_release==TRUE))
 a <- pivot_longer(assigned_activities,cols=starts_with("IS_"),names_to = "type",values_to = "IS_type")
