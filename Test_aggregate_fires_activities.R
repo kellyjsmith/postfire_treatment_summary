@@ -2,6 +2,7 @@ library("sf")
 library("terra")
 library("tidyverse")
 library("mapview")
+library("lubridate")
 library("foreach")
 library("doParallel")
 
@@ -11,23 +12,21 @@ keep <- c("FACTS_ID","SU ID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","
           "NBR_UNITS1","FUND_CODES","ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
 # Function to prepare fire layer
-prepare_fires <- function(fires, focal_fires){
+prepare_fires <- function(fires, focal_fires, last_year=2022){
   
   # Add YearName ID, filter for years, check polygon validity, add geometric attributes
-  fires <- fires |> mutate(VB_ID = paste(Ig_Year, Incid_Name, sep = ""))|>
-    filter(VB_ID %in% focal_fires$VB_ID) |>
-    filter(Ig_Year > 1992 & Ig_Year < 2018) 
+  fires <- fires |> filter(Ig_Year > 1992 & Ig_Year <= last_year) 
   fires <- fires[st_is_valid(fires),]
   fires <- fires[st_dimension(fires)==2,] 
   fires <- fires |>
-    group_by(VB_ID) |> summarize(
+    group_by(Event_ID) |> summarize(
       geometry = st_union(geometry),
       Ig_Year = first(Ig_Year),
       nIg_Years = n_distinct(Ig_Year),
       Incid_Name = first(Incid_Name),
       nIncid_Name = n_distinct(Incid_Name),
       sumBurnBndAc = sum(BurnBndAc),
-      sumFire_Acres = sum(Fire_Acres)
+      sumFire_Acres = sum(BurnBndAc)
     )
   fires <- st_transform(fires,crs=3310)
   
@@ -200,14 +199,14 @@ assign_activities <- function(fires_activities, fires){
     }
     
     if(nrow(fires_i)==1){
-      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID
+      fires_activities[i,"assigned_fire"]<-fires_i$Event_ID
       fires_activities[i,"flag"]<-1
     }else{
       fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
-      fires_activities[i,"flag"]<-length(fires_i$VB_ID)
+      fires_activities[i,"flag"]<-length(fires_i$Event_ID)
       fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
       fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
-      fires_activities[i,"assigned_fire"]<-fires_i$VB_ID[1]
+      fires_activities[i,"assigned_fire"]<-fires_i$Event_ID[1]
     }
     
   }
@@ -302,8 +301,9 @@ manage <- c(planting,manage.except.plant)
 
 # TODO: change input fires to last mtbs version from GEE, remove focal fires & rerun
 # Read in Fire and FACTS datasets
-fires <- st_read(dsn = "../../Data/mtbs_wildfires_CA_1993_2017.shp", stringsAsFactors = FALSE)
-focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
+fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
+# focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
 fires <- prepare_fires(fires,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
@@ -324,15 +324,15 @@ facts_fires <- intersect_activities(facts,fires,precission=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                    facts_fires$fires,10)
 
-saveRDS(facts_fires,"facts_fires.RDS")
+saveRDS(facts_fires,"facts_fires_2022.RDS")
 
-facts_fires <- readRDS("facts_fires.RDS")
+facts_fires <- readRDS("facts_fires_2022.RDS")
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
-assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","VB_ID")]
-assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
+assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
+assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
 
 # CREATING GEOMETRY FIELDS (activity_fire_area is the important AREA)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
@@ -349,10 +349,10 @@ for(i in fields){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
-saveRDS(assigned_activities,"assigned_activities.RDS")
+saveRDS(assigned_activities,"assigned_activities_2022.RDS")
 
 # gross vs net areas
-assigned_activities<-readRDS("assigned_activities.RDS")
+assigned_activities<-readRDS("assigned_activities_2022.RDS")
 comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
                               diff_years =unique(assigned_activities$diff_years))
 types <- c("planting","salvage","prep","release","thin","replant","prune","fuel")
@@ -372,7 +372,7 @@ net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
         if(dim(filtered)[1]==0){
           return(NULL)
         }else{
-          result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+          result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
             summarize(geometry=st_union(geometry),n_dissolved=n(),
                       Ig_Year=first(Ig_Year),diff_years=first(diff_years))
           result$ref_year <-result$Ig_Year+result$diff_years
@@ -391,7 +391,7 @@ gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                              if(dim(filtered)[1]==0){
                                return(NULL)
                              }else{
-                               result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                               result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
                                  summarize(gross_area=sum(st_area(geometry)),
                                       Ig_Year=first(Ig_Year),diff_years=first(diff_years))
                                result$ref_year <-result$Ig_Year+result$diff_years
