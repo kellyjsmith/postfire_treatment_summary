@@ -338,13 +338,13 @@ assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
-<<<<<<< HEAD
+
 assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
 assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
-=======
-assigned_activities <- assigned_activities[,c(keep, "activity_area","facts_polygon_id", "year", "VB_ID")]
-assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
->>>>>>> 4e8ca47bd7610e5d50b53137d9a34a7cc83c68c0
+
+# assigned_activities <- assigned_activities[,c(keep, "activity_area","facts_polygon_id", "year", "VB_ID")]
+# assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
+
 
 # CREATING GEOMETRY FIELDS (activity_fire_area is the important AREA)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
