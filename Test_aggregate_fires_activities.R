@@ -7,6 +7,37 @@ library("lubridate")
 library("foreach")
 library("doParallel")
 
+# Define FACTS columns to keep - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
+keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C",
+          "ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
+          "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
+
+# Define Reforestation Treatment Categories and associated FACTS activities
+planting <- c("Plant Trees") 
+salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)",
+             "Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
+             "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
+             "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
+prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
+          "Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other",
+          "Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning",
+          "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels") 
+release <- c("Tree Release and Weed","Control of Understory Vegetation") 
+thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
+replant <- c("Fill-in or Replant Trees") 
+prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
+fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
+          "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
+          "Broadcast Burning - Covers a majority of the unit") 
+cert <- c("Certification-Planted", "TSI Certification - Release/weeding",
+          "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
+          "TSI Certification - Cleaning", "TSI Certification - Pruning") 
+survey <- c("Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
+            "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared")
+manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert)
+manage <- c(planting,manage.except.plant)
+
 
 # Function to prepare fire layer
 prepare_fires <- function(fires, focal_fires, last_year=2022){
@@ -43,38 +74,6 @@ prepare_facts <- function(facts){
   # facts <- facts |> filter(!is.na(DATE_C))
   facts$DATE_COMPL <- ymd(as.character(facts$DATE_COMPL))
   facts$year <- year(facts$DATE_COMPL)
-  
-  # Define FACTS columns to keep - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
-  keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C",
-            "ACTIVITY","LOCAL_QUAL","METHOD","ACRES_COMPLETED","FUND_CODES",
-            "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
-  
-  # Define Reforestation Treatment Categories and associated FACTS activities
-  planting <- c("Plant Trees") 
-  salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Clearcut (EA/RH/FH)",
-               "Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
-               "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
-               "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
-  prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
-            "Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
-            "Site Preparation for Planting - Burning","Site Preparation for Planting - Other",
-            "Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning",
-            "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels") 
-  release <- c("Tree Release and Weed","Control of Understory Vegetation") 
-  thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
-  replant <- c("Fill-in or Replant Trees") 
-  prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
-  fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
-            "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
-            "Broadcast Burning - Covers a majority of the unit") 
-  cert <- c("Certification-Planted", "TSI Certification - Release/weeding",
-            "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
-            "TSI Certification - Cleaning", "TSI Certification - Pruning") 
-  survey <- c("Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
-              "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared")
-  manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert)
-  manage <- c(planting,manage.except.plant)
-  
   
   # Compute geometric parameters of facts polygons
   facts$activity_area <- as.numeric(st_area(facts))
