@@ -16,6 +16,9 @@ a$type <- gsub("IS_","",a$type)
 a <- a[a$IS_type,]
 a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
 
+# Filter 5-year Activities
+activities_summary_10years = assigned_activities %>%
+  filter(diff_years < 10)
 
 
 # Planting Summary & Trends
@@ -33,11 +36,23 @@ planting_trends = planting_summary %>%
 
 ggplot(planting_trends) +
   aes(x = Ig_Year, y = wtd_avg_years_to_plant) +
-  geom_point() +
+  geom_bar() +
   geom_smooth(method = "lm") +
-  scale_x_continuous("Year of Ignition", breaks = seq(1993, 2017, by = 3)) +
+  scale_x_binned("Year of Ignition", breaks = seq(1993, 2017, by = 3)) +
   scale_y_continuous("Average Number of Years Until Planting")
 
+ggplot(planting_trends) +
+  aes(Ig_Year) +
+  geom_bar(weight = wtd_avg_years_to_plant) +
+  geom_smooth(method = "lm") +
+  scale_x_discrete("Year of Ignition") +
+  scale_y_continuous("Average Number of Years Until Planting")
+
+ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
+  facet_wrap(~type,ncol=3) +
+  geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
+  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) + 
+  xlim(c(0,15)) + ylim(c(1993,2017))
 
 
 # Release Summary & Trends
@@ -73,7 +88,6 @@ summary_table_fires <- filtered_activities %>%
   group_by(VB_ID, ACTIVITY) %>%
   mutate(first_plant = min(year)) %>%
   mutate(years_to_planting = first_plant - Ig_Year)
-# summarize(avg_years_to_planting = mean(years_to_planting))
 
 
 
@@ -85,11 +99,6 @@ ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.8
   scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) + 
   xlim(c(0,15)) + ylim(c(1993,2017))
 
-ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
-  facet_wrap(~type,ncol=3) +
-  geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
-  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) + 
-  xlim(c(0,15)) + ylim(c(1993,2017))
 
 ggplot(filter(assigned_activities, year <= 2018 & year >= 1998)) +
   aes(x = year, y = as.numeric(activity_fire_area) / 4046.86) +
