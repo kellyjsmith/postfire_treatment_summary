@@ -16,9 +16,86 @@ a$type <- gsub("IS_","",a$type)
 a <- a[a$IS_type,]
 a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
 
-# Filter 5-year Activities
-activities_summary_10years = assigned_activities %>%
-  filter(diff_years < 10)
+# gross vs net areas
+assigned_activities<-readRDS("assigned_activities_2022.RDS")
+assigned_activities = assigned_activities %>%
+  mutate(activity_fire_acres = activity_fire_area/4046.86)
+comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
+                              diff_years =unique(assigned_activities$diff_years))
+types <- c("planting","salvage","prep","release","thin","replant","prune","fuel")
+assigned_activities$ACTIVITY_TYPE<-NA
+for(i in types){
+  print(i)
+  categories <- eval(parse(text=i))
+  is_cat <- assigned_activities$ACTIVITY%in%categories
+  assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
+}
+
+check_overlaps = assigned_activities %>%
+  mutate(activity_acres = activity_area/4046.86) %>%
+  mutate(intersecting_acres = intersecting_area/4046.86) %>%
+  group_by(facts_polygon_id) %>%
+  add_count() %>%
+  filter(n >= 2)
+
+net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+                           function(x,y,assigned_activities){
+                             
+                             filtered <- assigned_activities |> 
+                               filter(Ig_Year ==x & diff_years==y)
+                             
+                             if(dim(filtered)[1]==0){
+                               return(NULL)
+                             }else{
+                               result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                                 summarize(geometry=st_union(geometry),n_dissolved=n(),
+                                           Ig_Year=first(Ig_Year),diff_years=first(diff_years))
+                               result$ref_year <-result$Ig_Year+result$diff_years
+                               result$net_area <- st_area(result)
+                               return(result)
+                             }
+                           },assigned_activities=assigned_activities)
+
+
+gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+                             function(x,y,assigned_activities){
+                               
+                               filtered <- assigned_activities |> 
+                                 filter(Ig_Year ==x & diff_years==y)
+                               
+                               if(dim(filtered)[1]==0){
+                                 return(NULL)
+                               }else{
+                                 result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                                   summarize(gross_area=sum(st_area(geometry)),
+                                             Ig_Year=first(Ig_Year),diff_years=first(diff_years))
+                                 result$ref_year <-result$Ig_Year+result$diff_years
+                                 return(result)
+                               }
+                             },assigned_activities=assigned_activities)
+
+
+gross_activities_10years <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+                             function(x,y,assigned_activities){
+                               
+                               filtered <- assigned_activities |> 
+                                 filter(Ig_Year ==x & diff_years==y) |>
+                                 filter(diff_years < 10)
+                                  
+                               if(dim(filtered)[1]==0){
+                                 return(NULL)
+                               }else{
+                                 result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                                   summarize(gross_area=sum(st_area(geometry)),
+                                             Ig_Year=first(Ig_Year),diff_years=first(diff_years))
+                                 result$ref_year <-result$Ig_Year+result$diff_years
+                                 return(result)
+                               }
+                             },assigned_activities=assigned_activities)
+
+
+
+
 
 
 # Planting Summary & Trends
@@ -88,6 +165,33 @@ summary_table_fires <- filtered_activities %>%
   group_by(VB_ID, ACTIVITY) %>%
   mutate(first_plant = min(year)) %>%
   mutate(years_to_planting = first_plant - Ig_Year)
+
+
+# # Filter 10-year Activities
+# gross_10years = gross_activities %>%
+#   filter(diff_years < 10) %>%
+#   group_by(VB_ID, ACTIVITY_TYPE) %>%
+#   summarize(gross_acres = as.numeric(sum(gross_area)/4046.86))
+  
+gross_net_diff = setdiff(gross_activities$gross_area - net_activities$net_area)
+
+
+# Convert sf object to data frame
+gross_activities_10years_df = as.data.frame(gross_activities_10years)
+net_activities_df = as.data.frame(net_activities)
+
+# Group by ig_year and summarize acres
+gross_by_ig_year = gross_activities_10years_df %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(gross_acres = as.numeric(sum(gross_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = gross_acres)
+net_by_ig_year = net_activities_df %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = net_acres)
+
+
+
 
 
 
