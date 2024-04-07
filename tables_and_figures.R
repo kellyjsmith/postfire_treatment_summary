@@ -237,11 +237,12 @@ ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
 ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
   geom_line(aes(y = gross_acres_5yr, color = "Gross Acres")) +
   geom_line(aes(y = net_acres_5yr, color = "Net Acres")) +
-  ggtitle("5-yr Gross and Net Completed Acres by Ignition Year") +
+  ggtitle("Gross and Net Acres Completed within 5 Years of Fire") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2018, 4)) +
+  scale_x_continuous(breaks = seq(1992, 2018, 6)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
-  theme_classic()
+  theme_classic() +
+  theme(legend.position="bottom", legend.box = "horizontal")
 
 
 

@@ -305,7 +305,13 @@ generate_non_overlapping <- function(polygons,precision=NULL){
 
 
 
-# TODO: change input fires to last mtbs version from GEE, remove focal fires & rerun
+#### TODO: ####
+
+# change input fires to last mtbs version from GEE, remove focal fires & rerun
+# add code defining the origins of the activities within assign_activities
+
+
+
 # Read in Fire and FACTS datasets
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
@@ -345,7 +351,7 @@ assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Eve
 # assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
 
 
-# CREATING GEOMETRY FIELDS (activity_fire_area is the important AREA)
+# CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
 assigned_activities_perimeters <- st_cast(assigned_activities,"MULTILINESTRING")
 assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))

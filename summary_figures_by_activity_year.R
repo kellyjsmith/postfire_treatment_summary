@@ -77,11 +77,13 @@ ggplot(combined_ref_year_filter1, aes(x = ref_year)) +
   labs(x = "Treatment Year", y = "Treatment Acres", color = "Type of Acres") +
   scale_x_continuous(breaks = seq(1992, 2024, 6)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
-  theme_classic()
+  theme_classic()+
+  theme(legend.position="bottom", legend.box = "horizontal")
+
 ggplot(combined_5yr_ref_year_filter1, aes(x = ref_year)) +
   geom_line(aes(y = gross_acres_5yr, color = "Gross 5yr Acres")) +
   geom_line(aes(y = net_acres_5yr, color = "Net 5yr Acres")) +
   labs(x = "Activity Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1993, 2017, 3)) +
-  facet_wrap(~ ACTIVITY_TYPE) +
+  scale_x_continuous(breaks = seq(1993, 2017, 6)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
   theme_classic()
