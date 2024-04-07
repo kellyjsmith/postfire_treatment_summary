@@ -6,6 +6,7 @@ library("terra")
 library("tidyverse")
 library("flextable")
 library("insight")
+library("units")
 
 assigned_activities = readRDS("assigned_activities.RDS")
 
@@ -17,75 +18,13 @@ a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(act
 
 
 
-
-
-# gross vs net areas
-assigned_activities<-readRDS("assigned_activities_2022.RDS")
-assigned_activities = assigned_activities %>%
-  mutate(activity_fire_acres = activity_fire_area/4046.86)
-
-comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
-                              diff_years =unique(assigned_activities$diff_years))
-types <- c("planting","salvage","prep","release","thin","replant","prune","fuel")
-assigned_activities$ACTIVITY_TYPE<-NA
-facts$ACTIVITY_TYPE = NA
-
-# Create activity type fields
-for(i in types){
-  print(i)
-  categories <- eval(parse(text=i))
-  is_cat <- assigned_activities$ACTIVITY%in%categories
-  assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
-}
-
-for(i in types){
-  print(i)
-  categories <- eval(parse(text=i))
-  is_cat <- facts$ACTIVITY%in%categories
-  facts[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,facts$ACTIVITY_TYPE)
-}
-
-
-
-net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                           function(x,y,assigned_activities){
-                             
-                             filtered <- assigned_activities |> 
-                               filter(Ig_Year ==x & diff_years==y)
-                             
-                             if(dim(filtered)[1]==0){
-                               return(NULL)
-                             }else{
-                               result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
-                                 summarize(geometry=st_union(geometry),n_dissolved=n(),
-                                           Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-                               result$ref_year <-result$Ig_Year+result$diff_years
-                               result$net_area <- st_area(result)
-                               return(result)
-                             }
-                           },assigned_activities=assigned_activities)
-
-
-gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                             function(x,y,assigned_activities){
-                               
-                               filtered <- assigned_activities |> 
-                                 filter(Ig_Year ==x & diff_years==y)
-                               
-                               if(dim(filtered)[1]==0){
-                                 return(NULL)
-                               }else{
-                                 result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
-                                   summarize(gross_area=sum(st_area(geometry)),
-                                             Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-                                 result$ref_year <-result$Ig_Year+result$diff_years
-                                 return(result)
-                               }
-                             },assigned_activities=assigned_activities)
-
 # Convert sf objects to data frames
-assigned_df = st_drop_geometry(assigned_activities) 
+assigned_df = st_drop_geometry(assigned_activities)
 facts_df = st_drop_geometry(facts)
+
+# drop units
+units(assigned_df$activity_fire_acres) <- NULL
+
 
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
 summary_facts <- facts_df %>%
@@ -127,19 +66,38 @@ ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
 
 
 # Planting Summary & Trends
-planting_10years <- assigned_activities %>%
-  filter(diff_years < 10 & IS_planting)
+planting_10years <- assigned_df %>%
+  filter(diff_years < 10) %>%
+  filter(ACTIVITY_TYPE == "planting")
 
-planting_summary = planting_10years %>%
+planting_10years = planting_10years %>%
   group_by(Ig_Year, VB_ID) %>%
   summarize(years_to_first_plant = min(diff_years), avg_years_to_plant = mean(diff_years),
             mode(diff_years), net_acres_planted = sum(activity_fire_acres))
 
-planting_trends = planting_summary %>%
+planting_10years = planting_10years %>%
   group_by(Ig_Year) %>%
-  summarize(wtd_avg_years_to_plant = mean(avg_years_to_plant))
+  summarize(avg_years_to_first_plant = mean(years_to_first_plant), 
+            wtd_avg_years_to_plant = mean(avg_years_to_plant),
+            total_net_acres_planted = sum(net_acres_planted))
 
-ggplot(planting_trends) +
+ggplot(planting_10years) +
+  aes(x = Ig_Year, y = total_net_acres_planted) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
+  scale_y_continuous("Total Postfire Acres Planted") +
+  theme_classic()
+
+ggplot(planting_10years) +
+  aes(x = Ig_Year, y = avg_years_to_first_plant) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
+  scale_y_continuous("Average Years Until First Plant") +
+  theme_classic()
+
+ggplot(planting_10years) +
   aes(x = Ig_Year, y = wtd_avg_years_to_plant) +
   geom_point() +
   geom_smooth(method = "lm") +
@@ -148,31 +106,46 @@ ggplot(planting_trends) +
   theme_classic()
 
 
-ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
-  facet_wrap(~type,ncol=3) +
-  geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
-  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1992,2018,by=4)) + 
-  xlim(c(0,15)) + ylim(c(1992,2018))
-
-
 # Release Summary & Trends
-release_10years <- assigned_activities %>%
-  filter(diff_years < 10 & IS_release)
+release_10years <- assigned_df %>%
+  filter(diff_years < 10) %>%
+  filter(ACTIVITY_TYPE == "release")
 
-release_summary = release_10years %>%
+release_10years = release_10years %>%
   group_by(Ig_Year, VB_ID) %>%
-  summarize(years_to_first_release = min(diff_years), avg_years_to_release = mean(diff_years))
+  summarize(years_to_first_release = min(diff_years), 
+            avg_years_to_release = mean(diff_years),
+            net_acres_released = sum(activity_fire_acres))
 
-release_trends = release_summary %>%
+release_10years = release_10years %>%
   group_by(Ig_Year) %>%
-  summarize(wtd_avg_years_to_release = mean(avg_years_to_release))
+  summarize(avg_years_to_first_release = mean(years_to_first_release), 
+            wtd_avg_years_to_release = mean(avg_years_to_release),
+            total_net_acres_released = sum(net_acres_released))
 
-ggplot(release_trends) +
+ggplot(release_10years) +
+  aes(x = Ig_Year, y = total_net_acres_released) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
+  scale_y_continuous("Total Postfire Acres Released") +
+  theme_classic()
+
+ggplot(release_10years) +
+  aes(x = Ig_Year, y = avg_years_to_first_release) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
+  scale_y_continuous("Average Years Until First Release") +
+  theme_classic()
+
+ggplot(release_10years) +
   aes(x = Ig_Year, y = wtd_avg_years_to_release) +
   geom_point() +
   geom_smooth(method = "lm") +
   scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
-  scale_y_continuous("Average Number of Years Until Release")
+  scale_y_continuous("Weighted Average Years Until Release") +
+  theme_classic()
 
 
 
@@ -202,7 +175,6 @@ net_5yr_by_ig_year = net_activities_df %>%
   group_by(Ig_Year, ACTIVITY_TYPE) %>%
   summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
   spread(key = ACTIVITY_TYPE, value = net_acres)
-
 
 # Filter the data frames for the specified columns
 net_by_ig_year_filter1 = net_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
