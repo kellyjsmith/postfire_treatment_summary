@@ -10,13 +10,6 @@ library("units")
 
 assigned_activities = readRDS("assigned_activities.RDS")
 
-a <- assigned_activities |>filter((diff_years<10) & (IS_planting==TRUE | IS_prep==TRUE |IS_release==TRUE))
-a <- pivot_longer(assigned_activities,cols=starts_with("IS_"),names_to = "type",values_to = "IS_type")
-a$type <- gsub("IS_","",a$type)
-a <- a[a$IS_type,]
-a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
-
-
 
 # Convert sf objects to data frames
 assigned_df = st_drop_geometry(assigned_activities)
@@ -64,38 +57,38 @@ ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
   theme_minimal()
 
 
+# drop units
+units(net_activities_df$net_area) <- NULL
 
 # Planting Summary & Trends
-planting_10years <- assigned_df %>%
+planting_net_10years <- net_activities_df %>%
   filter(diff_years < 10) %>%
-  filter(ACTIVITY_TYPE == "planting")
-
-planting_10years = planting_10years %>%
+  filter(ACTIVITY_TYPE == "planting") %>%
   group_by(Ig_Year, VB_ID) %>%
   summarize(years_to_first_plant = min(diff_years), avg_years_to_plant = mean(diff_years),
-            mode(diff_years), net_acres_planted = sum(activity_fire_acres))
+            net_acres_planted = sum(net_area/4046.86))
 
-planting_10years = planting_10years %>%
+planting_net_10years_summary = planting_net_10years %>%
   group_by(Ig_Year) %>%
   summarize(avg_years_to_first_plant = mean(years_to_first_plant), 
             wtd_avg_years_to_plant = mean(avg_years_to_plant),
             total_net_acres_planted = sum(net_acres_planted))
 
-ggplot(planting_10years) +
+ggplot(planting_net_10years_summary) +
   aes(x = Ig_Year, y = total_net_acres_planted) +
   geom_point() +
   geom_smooth(method = "lm") +
   scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
   scale_y_continuous("Total Postfire Acres Planted") +
-  theme_classic()
+  theme_bw()
 
-ggplot(planting_10years) +
+ggplot(planting_net_10years_summary) +
   aes(x = Ig_Year, y = avg_years_to_first_plant) +
   geom_point() +
   geom_smooth(method = "lm") +
   scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
   scale_y_continuous("Average Years Until First Plant") +
-  theme_classic()
+  theme_bw()
 
 ggplot(planting_10years) +
   aes(x = Ig_Year, y = wtd_avg_years_to_plant) +
@@ -103,7 +96,7 @@ ggplot(planting_10years) +
   geom_smooth(method = "lm") +
   scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
   scale_y_continuous("Average Number of Years Until Planting") +
-  theme_classic()
+  theme_bw()
 
 
 # Release Summary & Trends
@@ -137,7 +130,7 @@ ggplot(release_10years) +
   geom_smooth(method = "lm") +
   scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
   scale_y_continuous("Average Years Until First Release") +
-  theme_classic()
+  theme_bw()
 
 ggplot(release_10years) +
   aes(x = Ig_Year, y = wtd_avg_years_to_release) +
@@ -145,7 +138,7 @@ ggplot(release_10years) +
   geom_smooth(method = "lm") +
   scale_x_continuous("Year of Ignition", breaks = seq(1992, 2018, by = 4)) +
   scale_y_continuous("Weighted Average Years Until Release") +
-  theme_classic()
+  theme_bw()
 
 
 
@@ -202,6 +195,7 @@ gross_5yr_by_ig_year_filter1_long$type = "gross_acres_5yr"
 # Combine the data frames
 combined_ig_year_filter1 = rbind(net_by_ig_year_filter1_long, gross_by_ig_year_filter1_long)
 combined_5yr_ig_year_filter1 = rbind(net_5yr_by_ig_year_filter1_long, gross_5yr_by_ig_year_filter1_long)
+combined_5yr_ig_year_filter1_long = rbind(net_5yr_by_ig_year_filter1_long, gross_5yr_by_ig_year_filter1_long)
 # Spread the data frame to have gross_acres and net_acres in separate columns
 combined_ig_year_filter1 = spread(combined_ig_year_filter1, key = type, value = value)
 combined_5yr_ig_year_filter1 = spread(combined_5yr_ig_year_filter1, key = type, value = value)
@@ -234,26 +228,52 @@ ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
   scale_x_continuous(breaks = seq(1993, 2017, 3)) +
   facet_wrap(~ ACTIVITY_TYPE) +
   theme_classic()
+
+# Set custom colors
+gross_color <- "darkblue"
+net_color <- "orange"
+
 ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
   geom_line(aes(y = gross_acres_5yr, color = "Gross Acres")) +
   geom_line(aes(y = net_acres_5yr, color = "Net Acres")) +
-  ggtitle("Gross and Net Acres Completed within 5 Years of Fire") +
+  ggtitle("Gross and Net Acres Treated within 5 Years of Fire") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2018, 6)) +
+  scale_x_continuous(breaks = seq(1992, 2018, 4)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
-  theme_classic() +
-  theme(legend.position="bottom", legend.box = "horizontal")
-
-
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal",
+  )
 
 
 #### Examples ####
 
-ggplot(a)+ aes(x=diff_years,y=Ig_Year,fill=as.numeric(activity_fire_area)/4046.86) + 
-  facet_wrap(~type,ncol=3) +
-  geom_tile(stat = "identity" , height=1,width=1,color="grey") + scale_fill_gradient("acres") +
-  scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) + 
-  xlim(c(0,15)) + ylim(c(1993,2017))
+ assigned_df %>%
+a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
+
+
+ggplot(net_5yr_by_ig_year_filter1_long) +
+  ggtitle("R5 Net Acres Treated Postfire by Activity Type") +
+  aes(x = Ig_Year, y=ACTIVITY_TYPE, fill=value) + 
+  facet_wrap(~type) +
+  geom_tile(stat = "identity", height=1,width=1,color="grey") + 
+  scale_fill_gradient("Net Acres")
+  # scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) +
+
+ggplot(net_by_prod_ref_year_filter1) +
+  ggtitle("R5 Net Acres Planted Postfire by Productivity Class") +
+  aes(x = ref_year, y=PRODUCTIVI, fill=value) + 
+  geom_tile(stat = "identity", height=1,width=1,color="grey") + 
+  scale_fill_binned("Net Acres")
+# scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2))
+
+ggplot(planting_net_10years) +
+  ggtitle("R5 Net Acres Planted by Years After Fire") +
+  aes(x = Ig_Year, y=years_to_first_plant, fill=net_acres_planted) + 
+  geom_tile(stat = "identity", height=1,width=1,color="gray") + 
+  scale_fill_binned("Net Acres") +
+  scale_x_continuous(breaks=seq(1992,2018,by=4)) + scale_y_continuous(breaks=seq(0,10,by=2))
 
 
 a$activity_year <- a$Ig_Year +a$diff_years

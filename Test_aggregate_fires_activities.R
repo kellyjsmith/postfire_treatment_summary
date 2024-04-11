@@ -182,6 +182,9 @@ intersect_activities <- function(activities, fires, precission, cores){
   #     result <- assign_activities(x, fires)
   #   }
   
+  # Moved the on.exit line here
+  on.exit(try(stopCluster(cl)))
+  
   fires_activities <- foreach(
     x = result_parts,
     .packages = loaded,
@@ -310,7 +313,8 @@ generate_non_overlapping <- function(polygons,precision=NULL){
 # change input fires to last mtbs version from GEE, remove focal fires & rerun
 # add code defining the origins of the activities within assign_activities
 
-
+# 
+# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
 
 # Read in Fire and FACTS datasets
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
@@ -325,7 +329,7 @@ facts <- facts %>%
   filter(FISCAL_Y_2 > 1992)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel),]
+facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
@@ -360,7 +364,7 @@ assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire
 assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
 
 # CREATE IS_* fields
-fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","manage.except.plant","manage")
+fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- assigned_activities$ACTIVITY%in%categories
