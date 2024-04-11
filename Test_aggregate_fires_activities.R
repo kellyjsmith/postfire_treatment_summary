@@ -43,7 +43,7 @@ manage <- c(planting,manage.except.plant)
 prepare_fires <- function(fires, nfs_r5, focal.fires.input){
   
   # Add YearName ID, filter for years, check polygon validity, add geometric attributes
-  fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019)
+  # fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019)
   fires <- fires[st_is_valid(fires),]
   fires = fires[st_make_valid(fires),]
   fires <- fires[st_dimension(fires)==2,] 
@@ -323,12 +323,21 @@ generate_non_overlapping <- function(polygons,precision=NULL){
 # setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
 
 #### Read in and prepare Fire and FACTS datasets ####
-fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
-nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+
+# fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
+
+fires = fires %>%
+  mutate(Ig_Year = year(Ig_Date)) %>%
+  filter(Incid_Type == "Wildfire") %>%
+  filter(Ig_Year > 1993 & Ig_Year < 2019)
+         
 fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
 fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
 fires <- prepare_fires(fires,nfs_r5,focal.fires.input)
+
+nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 
 facts <- st_read("../../Data/facts_r5.shp")
 
@@ -350,7 +359,8 @@ facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_ac
 
 saveRDS(facts_fires,"facts_fires_2022.RDS")
 
-facts_fires <- readRDS("facts_fires_2022.RDS")
+# facts_fires <- readRDS("facts_fires_2022.RDS")
+facts_fires <- readRDS("facts_fires.RDS")
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
@@ -384,7 +394,7 @@ saveRDS(assigned_activities,"assigned_activities_2022.RDS")
 assigned_activities<-readRDS("assigned_activities_2022.RDS")
 comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
                               diff_years =unique(assigned_activities$diff_years))
-types <- c("planting","salvage","prep","release","thin","replant","prune","fuel")
+types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
