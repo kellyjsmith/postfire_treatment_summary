@@ -40,11 +40,12 @@ manage <- c(planting,manage.except.plant)
 
 
 # Function to prepare fire layer
-prepare_fires <- function(fires, focal_fires, last_year=2022){
+prepare_fires <- function(fires, nfs_r5, focal.fires.input){
   
   # Add YearName ID, filter for years, check polygon validity, add geometric attributes
-  fires <- fires |> filter(Ig_Year > 1992 & Ig_Year <= last_year) 
+  fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019)
   fires <- fires[st_is_valid(fires),]
+  fires = fires[st_make_valid(fires),]
   fires <- fires[st_dimension(fires)==2,] 
   fires <- fires |>
     group_by(Event_ID) |> summarize(
@@ -57,6 +58,11 @@ prepare_fires <- function(fires, focal_fires, last_year=2022){
       sumFire_Acres = sum(BurnBndAc)
     )
   fires <- st_transform(fires,crs=3310)
+  nfs_r5 = st_transform(nfs_r5,crs = 3310)
+  
+  # Clip fires to R5 NF layer
+  nfs_r5 = st_union(nfs_r5)
+  fires = st_intersection(fires, nfs_r5)
   
   fires$fire_area <- st_area(fires)
   fires
@@ -316,17 +322,19 @@ generate_non_overlapping <- function(polygons,precision=NULL){
 # 
 # setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
 
-# Read in Fire and FACTS datasets
+#### Read in and prepare Fire and FACTS datasets ####
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
-# focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
-fires <- prepare_fires(fires,focal.fires.input)
+fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
+focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
+fires <- prepare_fires(fires,nfs_r5,focal.fires.input)
 
 facts <- st_read("../../Data/facts_r5.shp")
 
 # Filter out records from before the assessment period
 facts <- facts %>%
-  filter(FISCAL_Y_2 > 1992)
+  filter(FISCAL_Y_2 > 1993)
 
 # Keep only reforestation-related activities and important fields
 facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert),]
@@ -335,7 +343,7 @@ facts <- facts[,keep]
 # Run function to prepare dataset
 facts <- prepare_facts(facts)
 
-# Conduct intersection and assign activities
+#### Conduct intersection and assign activities ####
 facts_fires <- intersect_activities(facts,fires,precission=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                    facts_fires$fires,10)
