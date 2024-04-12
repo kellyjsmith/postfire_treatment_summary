@@ -320,7 +320,7 @@ generate_non_overlapping <- function(polygons,precision=NULL){
 # add code defining the origins of the activities within assign_activities
 
 # 
-# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
 
 #### Read in and prepare Fire and FACTS datasets ####
 
@@ -365,9 +365,10 @@ assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
+# assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
 
-assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
-assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
+## Paco, what was the merge below for?
+# assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
 
 # assigned_activities <- assigned_activities[,c(keep, "activity_area","facts_polygon_id", "year", "VB_ID")]
 # assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
@@ -375,9 +376,11 @@ assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Eve
 
 # CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
+assigned_activities$activity_fire_acres = assigned_activities$activity_fire_area/4046.86
 assigned_activities_perimeters <- st_cast(assigned_activities,"MULTILINESTRING")
 assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))
 assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire_perim_length/assigned_activities$activity_fire_area
+
 # CREATING difference between activity and fire year
 assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
 
@@ -388,12 +391,9 @@ for(i in fields){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
-saveRDS(assigned_activities,"assigned_activities_2022.RDS")
 
-# gross vs net areas
-assigned_activities<-readRDS("assigned_activities_2022.RDS")
-comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
-                              diff_years =unique(assigned_activities$diff_years))
+
+# Assign treatment category
 types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
@@ -403,6 +403,15 @@ for(i in types){
   assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
 } 
 
+# create grid of unique combinations of ig year and diff years
+comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
+                              diff_years =unique(assigned_activities$diff_years))
+
+saveRDS(assigned_activities,"assigned_activities_2022.RDS")
+
+assigned_activities<-readRDS("assigned_activities_2022.RDS")
+
+# gross vs net areas
 net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                        function(x,y,assigned_activities){
                          

@@ -33,6 +33,10 @@ combined_ref_year_filter1 = spread(combined_ref_year_filter1, key = type, value 
 # Add a new column for the difference between gross and net acres
 combined_ref_year_filter1$difference = combined_ref_year_filter1$gross_acres - combined_ref_year_filter1$net_acres
 
+
+combined_ref_year_filter2 = combined_ref_year_filter1 %>%
+  filter(ACTIVITY_TYPE %in% c("cert", "planting"))
+
 # Plot difference
 ggplot(combined_ref_year_filter1, aes(x = ref_year)) +
   geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
@@ -43,13 +47,13 @@ ggplot(combined_ref_year_filter1, aes(x = ref_year)) +
   theme(legend.position="bottom", legend.box = "horizontal")
 
 # Plot gross and net with facets
-ggplot(combined_ref_year_filter1, aes(x = ref_year)) +
+ggplot(combined_ref_year_filter2, aes(x = ref_year)) +
   geom_line(aes(y = gross_acres, color = "Gross Acres")) +
   geom_line(aes(y = net_acres, color = "Net Acres")) +
   ggtitle("Gross and Net Acres Treated by Activity Year") +
   labs(x = "Activity Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2023, 4)) +
-  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
+  scale_x_continuous(breaks = seq(1992, 2024, 6)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 1) +
   theme_bw()+
   theme(legend.position="bottom", legend.box = "horizontal")
 
