@@ -6,10 +6,11 @@ library("mapview")
 library("lubridate")
 library("foreach")
 library("doParallel")
+library("stringr")
 
 # Define FACTS columns to keep - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
-keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C",
-          "ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
+keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
+          "ACTIVITY_C","ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
           "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
 # Define Reforestation Treatment Categories and associated FACTS activities
@@ -19,11 +20,11 @@ salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Cle
              "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
              "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
 prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
-          "Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
-          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other",
+          "Site Preparation for Planting - Chemical","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other", "Site Preparation for Natural Regeneration - Mechanical",
           "Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning",
           "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels") 
-release <- c("Tree Release and Weed","Control of Understory Vegetation") 
+release <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
 thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
 replant <- c("Fill-in or Replant Trees") 
 prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
@@ -33,14 +34,18 @@ fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yardin
 cert <- c("Certification-Planted", "TSI Certification - Release/weeding",
           "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
           "TSI Certification - Cleaning", "TSI Certification - Pruning") 
-survey <- c("Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
-            "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared")
-manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert)
+survey <- c("Silvicultural Stand Examination","Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
+            "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared",
+            "Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation",
+            "Pretreatment Exam for Reforestation")
+review = c("Activity Review","Photo Stand Delineation","Remote Sensing Vegetation Mapping","Stand Silviculture Prescription")
+need = c("Reforestation Need Created by Fire","Reforestation Need created by Regeneration Failure","Reforestation Need Change due to Stocking Changes")
+manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert,review,need)
 manage <- c(planting,manage.except.plant)
 
 
 # Function to prepare fire layer
-prepare_fires <- function(fires, nfs_r5, focal.fires.input){
+prepare_fires <- function(fires, nfs_r5){
   
   # Add YearName ID, filter for years, check polygon validity, add geometric attributes
   # fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019)
@@ -126,6 +131,9 @@ cross_facts_fire<-function(polygon, fires_fires){
       return(NULL)
     }else{
       fire_activity$intersecting_area <- st_area(fire_activity)
+      
+      # add activity origins here if size of grouping by CRC value is > 1? ####
+      
       return(fire_activity)
     }
   },error=function(e){
@@ -189,7 +197,7 @@ intersect_activities <- function(activities, fires, precission, cores){
   #   }
   
   # Moved the on.exit line here
-  on.exit(try(stopCluster(cl)))
+  # on.exit(try(stopCluster(cl)))
   
   fires_activities <- foreach(
     x = result_parts,
@@ -329,24 +337,28 @@ fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactor
 
 fires = fires %>%
   mutate(Ig_Year = year(Ig_Date)) %>%
-  filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year > 1993 & Ig_Year < 2019)
+  filter(Incid_Type == "Wildfire")
          
 fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
 fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
-fires <- prepare_fires(fires,nfs_r5,focal.fires.input)
-
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+fires <- prepare_fires(fires,nfs_r5)
+
 
 facts <- st_read("../../Data/facts_r5.shp")
 
+refor = facts %>%
+  st_drop_geometry() %>%
+  filter(str_starts(as.character(ACTIVITY_C), "43") | str_starts(as.character(ACTIVITY_C), "44"))
+refor = c(unique(refor$ACTIVITY))
+
 # Filter out records from before the assessment period
 facts <- facts %>%
-  filter(FISCAL_Y_2 > 1993)
+  filter(FISCAL_Y_2 > 1984)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert),]
+facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert,review,need),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
@@ -354,6 +366,7 @@ facts <- prepare_facts(facts)
 
 #### Conduct intersection and assign activities ####
 facts_fires <- intersect_activities(facts,fires,precission=1000,10)
+
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                    facts_fires$fires,10)
 
@@ -385,7 +398,7 @@ assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire
 assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
 
 # CREATE IS_* fields
-fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","manage.except.plant","manage")
+fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- assigned_activities$ACTIVITY%in%categories
@@ -394,7 +407,7 @@ for(i in fields){
 
 
 # Assign treatment category
-types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert")
+types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
