@@ -310,7 +310,7 @@ facts <- facts %>%
   filter(FISCAL_Y_2 > 1993)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert),]
+facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert,review,need),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
@@ -370,7 +370,7 @@ assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire
 
 
 # CREATE IS_* fields
-fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","manage.except.plant","manage")
+fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- assigned_activities$ACTIVITY%in%categories
@@ -378,7 +378,7 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE
-types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert")
+types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
