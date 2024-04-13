@@ -6,11 +6,10 @@ library("mapview")
 library("lubridate")
 library("foreach")
 library("doParallel")
-library("stringr")
 
 # Define FACTS columns to keep - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
-keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
-          "ACTIVITY_C","ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
+keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C",
+          "ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
           "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
 # Define Reforestation Treatment Categories and associated FACTS activities
@@ -20,11 +19,11 @@ salvage <- c("Salvage Cut (intermediate treatment, not regeneration)","Stand Cle
              "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
              "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
 prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
-          "Site Preparation for Planting - Chemical","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
-          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other", "Site Preparation for Natural Regeneration - Mechanical",
+          "Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other",
           "Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning",
           "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels") 
-release <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
+release <- c("Tree Release and Weed","Control of Understory Vegetation") 
 thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
 replant <- c("Fill-in or Replant Trees") 
 prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
@@ -34,13 +33,9 @@ fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yardin
 cert <- c("Certification-Planted", "TSI Certification - Release/weeding",
           "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
           "TSI Certification - Cleaning", "TSI Certification - Pruning") 
-survey <- c("Silvicultural Stand Examination","Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
-            "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared",
-            "Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation",
-            "Pretreatment Exam for Reforestation")
-review = c("Activity Review","Photo Stand Delineation","Remote Sensing Vegetation Mapping","Stand Silviculture Prescription")
-need = c("Reforestation Need Created by Fire","Reforestation Need created by Regeneration Failure","Reforestation Need Change due to Stocking Changes")
-manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert,review,need)
+survey <- c("Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
+            "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared")
+manage.except.plant <- c(salvage,prep,release,thin,replant,prune,fuel,survey,cert)
 manage <- c(planting,manage.except.plant)
 
 
@@ -130,9 +125,6 @@ cross_facts_fire<-function(polygon, fires_fires){
       return(NULL)
     }else{
       fire_activity$intersecting_area <- st_area(fire_activity)
-      
-      # add activity origins here if size of grouping by CRC value is > 1? ####
-      
       return(fire_activity)
     }
   },error=function(e){
@@ -196,7 +188,7 @@ intersect_activities <- function(activities, fires, precision, cores){
   #   }
   
   # Moved the on.exit line here
-  # on.exit(try(stopCluster(cl)))
+  on.exit(try(stopCluster(cl)))
   
   fires_activities <- foreach(
     x = result_parts,
@@ -290,16 +282,7 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 }
 
 #### TODO: ####
-<<<<<<< HEAD
 # Summarize severity
-=======
-
-# change input fires to last mtbs version from GEE, remove focal fires & rerun
-# add code defining the origins of the activities within assign_activities
-
-# 
-setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
->>>>>>> 21c5ace4e29117714c2312fe11ed7686a0f8a56d
 
 #### Read in and prepare Fire and FACTS datasets ####
 
@@ -312,46 +295,28 @@ fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 
 fires = fires %>%
   mutate(Ig_Year = year(Ig_Date)) %>%
-  filter(Incid_Type == "Wildfire")
-         
-<<<<<<< HEAD
-fires <- prepare_fires(fires,nfs_r5)
-=======
-fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
-fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
-focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
-nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires <- prepare_fires(fires,nfs_r5)
+  filter(Incid_Type == "Wildfire") %>%
+  filter(Ig_Year > 1993 & Ig_Year < 2019)
 
->>>>>>> 21c5ace4e29117714c2312fe11ed7686a0f8a56d
+fires <- prepare_fires(fires,nfs_r5)
 
 facts <- st_read("../../Data/facts_r5.shp")
 
-refor = facts %>%
-  st_drop_geometry() %>%
-  filter(str_starts(as.character(ACTIVITY_C), "43") | str_starts(as.character(ACTIVITY_C), "44"))
-refor = c(unique(refor$ACTIVITY))
-
 # Filter out records from before the assessment period
 facts <- facts %>%
-  filter(FISCAL_Y_2 > 1984)
+  filter(FISCAL_Y_2 > 1993)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert,review,need),]
+facts <- facts[facts$ACTIVITY %in% c(planting,salvage,prep,release,thin,replant,prune,fuel,cert),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
 facts <- prepare_facts(facts)
 
 #### Conduct intersection and assign activities ####
-<<<<<<< HEAD
 facts_fires <- intersect_activities(facts,fires,precision=1000,10)
-=======
-facts_fires <- intersect_activities(facts,fires,precission=1000,10)
-
->>>>>>> 21c5ace4e29117714c2312fe11ed7686a0f8a56d
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
-                                                   facts_fires$fires,10)
+                                                            facts_fires$fires,10)
 
 saveRDS(facts_fires,"facts_fires_2022.RDS")
 
@@ -361,17 +326,15 @@ assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
-# assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
 
-## Paco, what was the merge below for?
-# assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
+assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
+assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
 
 # assigned_activities <- assigned_activities[,c(keep, "activity_area","facts_polygon_id", "year", "VB_ID")]
 # assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
 
 # CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
-<<<<<<< HEAD
 
 assigned_activities<-assigned_activities[as.numeric(assigned_activities$activity_fire_area)>0,]
 assigned_activities<-assigned_activities[!is.na(assigned_activities$activity_fire_area),]
@@ -379,13 +342,13 @@ assigned_activities <- assigned_activities[!st_geometry_type(assigned_activities
 good<-sapply(assigned_activities$geometry,function(x){
   a<-try(st_cast(x,"MULTILINESTRING"))
   !inherits(a,"try-error")
-  })
+})
 assigned_activities <- assigned_activities[good,]
 assigned_activities_perimeters <- st_sfc(lapply(assigned_activities$geometry,function(x){
   if(st_geometry_type(x)=="GEOMETRYCOLLECTION"){
-
+    
     x <- lapply(x,"[")
-
+    
     keep <- sapply(x,function(y){
       is_list(y)
     })
@@ -399,32 +362,21 @@ assigned_activities_perimeters <- st_sfc(lapply(assigned_activities$geometry,fun
   
 }))
 
-=======
-assigned_activities$activity_fire_acres = assigned_activities$activity_fire_area/4046.86
-assigned_activities_perimeters <- st_cast(assigned_activities,"MULTILINESTRING")
->>>>>>> 21c5ace4e29117714c2312fe11ed7686a0f8a56d
 assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))
 assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire_perim_length/assigned_activities$activity_fire_area
-
 # CREATING difference between activity and fire year
 assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
 
 # CREATE IS_* fields
-fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need","manage.except.plant","manage")
+fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
 
-<<<<<<< HEAD
 # CREATE ACTIVITY TYPE
 types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert")
-=======
-
-# Assign treatment category
-types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need")
->>>>>>> 21c5ace4e29117714c2312fe11ed7686a0f8a56d
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
@@ -432,53 +384,5 @@ for(i in types){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
 } 
-<<<<<<< HEAD
 saveRDS(assigned_activities,"assigned_activities_2022.RDS")
-=======
-
-# create grid of unique combinations of ig year and diff years
-comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
-                              diff_years =unique(assigned_activities$diff_years))
-
-saveRDS(assigned_activities,"assigned_activities_2022.RDS")
-
-assigned_activities<-readRDS("assigned_activities_2022.RDS")
-
-# gross vs net areas
-net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                       function(x,y,assigned_activities){
-                         
-        filtered <- assigned_activities |> 
-                      filter(Ig_Year ==x & diff_years==y)
-        
-        if(dim(filtered)[1]==0){
-          return(NULL)
-        }else{
-          result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
-            summarize(geometry=st_union(geometry),n_dissolved=n(),
-                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-          result$ref_year <-result$Ig_Year+result$diff_years
-          result$net_area <- st_area(result)
-          return(result)
-        }
-                       },assigned_activities=assigned_activities)
-
-
-gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                           function(x,y,assigned_activities){
-                             
-                             filtered <- assigned_activities |> 
-                               filter(Ig_Year ==x & diff_years==y)
-                             
-                             if(dim(filtered)[1]==0){
-                               return(NULL)
-                             }else{
-                               result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
-                                 summarize(gross_area=sum(st_area(geometry)),
-                                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-                               result$ref_year <-result$Ig_Year+result$diff_years
-                               return(result)
-                             }
-                           },assigned_activities=assigned_activities)
->>>>>>> 21c5ace4e29117714c2312fe11ed7686a0f8a56d
 
