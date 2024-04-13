@@ -1,43 +1,46 @@
 
 
 # Modify the net_activities and gross_activities calculations to include PRODUCTIVI and year
-net_activities_productivity <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                              function(x,y,assigned_activities){
-                                
-                                filtered <- assigned_activities |> 
-                                  filter(Ig_Year ==x & diff_years==y)
-                                
-                                if(dim(filtered)[1]==0){
-                                  return(NULL)
-                                }else{
-                                  result <- filtered |> group_by(VB_ID,ACTIVITY_TYPE,PRODUCTIVI) |> 
-                                    summarize(geometry=st_union(geometry),n_dissolved=n(),
-                                              Ig_Year=first(Ig_Year),diff_years=first(diff_years),
-                                              PRODUCTIVI=first(PRODUCTIVI))
-                                  result$ref_year <-result$Ig_Year+result$diff_years
-                                  result$net_area <- st_area(result)
-                                  
-                                  # Summarize net area by PRODUCTIVI in separate columns
-                                  # result <- result |> pivot_wider(names_from = PRODUCTIVI, values_from = net_area, values_fill = 0)
-                                  
-                                  return(result)
-                                }
-                              },assigned_activities=assigned_activities)
+net_activities_productivity <- map2_dfr(
+  comb_fire_diff$fire_year,
+  comb_fire_diff$diff_years,
+  function(x,y,assigned_activities){
+      filtered <- assigned_activities |> 
+        filter(Ig_Year ==x & diff_years==y)
+      
+      if(dim(filtered)[1]==0){
+        return(NULL)
+      }else{
+        result <- filtered |> group_by(VB_ID,ACTIVITY_TYPE,PRODUCTIVI) |> 
+          summarize(geometry=st_union(geometry),n_dissolved=n(),
+                    Ig_Year=first(Ig_Year),diff_years=first(diff_years),
+                    PRODUCTIVI=first(PRODUCTIVI))
+        result$ref_year <-result$Ig_Year+result$diff_years
+        result$net_area <- st_area(result)
+        
+        # Summarize net area by PRODUCTIVI in separate columns
+        # result <- result |> pivot_wider(names_from = PRODUCTIVI, values_from = net_area, values_fill = 0)
+        
+        return(result)
+      }
+    },assigned_activities=assigned_activities)
 
-gross_activities_productivity <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                             function(x,y,assigned_activities){
-                               filtered <- assigned_activities |> 
-                                 filter(Ig_Year ==x & diff_years==y)
-                               if(dim(filtered)[1]==0){
-                                 return(NULL)
-                               }else{
-                                 result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE,PRODUCTIVI)|> 
-                                   summarize(gross_area=sum(st_area(geometry)),
-                                             Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-                                 result$ref_year <-result$Ig_Year+result$diff_years
-                                 return(result)
-                               }
-                             },assigned_activities=assigned_activities)
+gross_activities_productivity <- map2_dfr(
+  comb_fire_diff$fire_year,
+  comb_fire_diff$diff_years,
+  function(x,y,assigned_activities){
+       filtered <- assigned_activities |> 
+         filter(Ig_Year ==x & diff_years==y)
+       if(dim(filtered)[1]==0){
+         return(NULL)
+       }else{
+         result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE,PRODUCTIVI)|> 
+           summarize(gross_area=sum(st_area(geometry)),
+                     Ig_Year=first(Ig_Year),diff_years=first(diff_years))
+         result$ref_year <-result$Ig_Year+result$diff_years
+         return(result)
+       }
+     },assigned_activities=assigned_activities)
 
 
 #### Summarize Treatment Area by Productivity Class ####
