@@ -5,6 +5,37 @@ library("mapview")
 library("foreach")
 library("doParallel")
 
+
+# NOT USED BUT USEFUL
+generate_non_overlapping <- function(polygons,precision=NULL){
+  
+  polygons<-st_buffer(polygons,0)
+  polygons<- st_make_valid(polygons)
+  
+  if(!is.null(precision)){
+    st_precision(polygons)<-precision
+  }
+  
+  pols_pols<-st_intersection(polygons)
+  
+  lut<-data.frame(intersection_id=c(),orig_id=c())
+  for(i in 1:nrow(pols_pols)){
+    
+    lut<-rbind(lut,data.frame(intersection_id=i,
+                              orig_id=pols_pols[["origins"]][[i]]))
+    
+  }
+  
+  geoms <- st_geometry(pols_pols[lut$intersection_id,])
+  attributes_df<-polygons[lut$orig_id,]
+  st_geometry(attributes_df)<-NULL
+  result <- cbind(geoms,attributes_df)
+  result <- st_sf(result)
+  return(result)
+  
+}
+
+
 # FACTS COLUMNS TO KEEP -- Kelly - NBR_UNITS1 IS ACRES COMPLETED; NBR_UNITS_ IS PLANNED
 keep <- c("FACTS_ID","SU ID","CRC_VALUE","DATE_COMPL","GIS_ACRES","ACTIVITY_C","ACTIVITY",
           "ACTIVITY_R","ACTIVITY_S","ACTIVITY_U","LOCAL_QUAL","METHOD","NBR_UNITS_",

@@ -6,3 +6,5 @@ postfire_treatment_summary.Rproj
 facts_fires.RDS
 assigned_activities.RDS
 test.tif
+assigned_activities_2022.RDS
+facts_fires_2022.RDS

@@ -40,7 +40,7 @@ manage <- c(planting,manage.except.plant)
 
 
 # Function to prepare fire layer
-prepare_fires <- function(fires, nfs_r5, focal.fires.input){
+prepare_fires <- function(fires, nfs_r5){
   
   # Add YearName ID, filter for years, check polygon validity, add geometric attributes
   # fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019)
@@ -98,15 +98,14 @@ prepare_facts <- function(facts){
 }
 
 # Function to self intersect fire polygons
-self_intersect <- function(polygons, precission=1000, area_threshold=0){
+self_intersect <- function(polygons, precision=1000, area_threshold=0){
   
-  polygons<-st_buffer(polygons,0)
-  if(!is.null(precission)){
-    st_precision(polygons)<-precission
+  polygons<-st_make_valid(polygons)
+  polygons<- st_intersection(polygons)
+  # polygons<-st_buffer(polygons,0)
+  if(!is.null(precision)){
+    st_precision(polygons)<-precision
   }
-  
-  polygons<-st_buffer(polygons,0) 
-  polygons<-st_intersection(polygons)
   polygons<-st_make_valid(polygons)
   polygons<-polygons[st_is_valid(polygons),]
   polygons <- polygons[st_dimension(polygons)==2,]
@@ -134,13 +133,13 @@ cross_facts_fire<-function(polygon, fires_fires){
 }
 
 # Function to intersect facts layer with fire layer
-# call "precission" to remove topology errors and "cores" for parallel processing
-intersect_activities <- function(activities, fires, precission, cores){
+# call "precision" to remove topology errors and "cores" for parallel processing
+intersect_activities <- function(activities, fires, precision, cores){
   
   on.exit(try(stopCluster(cl)))
   
   # Self-intersect fire layer and create ID to track facts polygon
-  fires_fires <- self_intersect(fires, precission  =  precission)
+  fires_fires <- self_intersect(fires, precision  =  precision)
   # fires_fires<-self_intersect(fires, area_threshold = 0)
   facts_polygon_id <- activities$facts_polygon_id
   
@@ -282,62 +281,24 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
   
 }
 
-# NOT USED BUT USEFUL
-generate_non_overlapping <- function(polygons,precision=NULL){
-  
-  polygons<-st_buffer(polygons,0)
-  polygons<- st_make_valid(polygons)
-  
-  if(!is.null(precision)){
-    st_precision(polygons)<-precision
-  }
-  
-  pols_pols<-st_intersection(polygons)
-  
-  lut<-data.frame(intersection_id=c(),orig_id=c())
-  for(i in 1:nrow(pols_pols)){
-    
-    lut<-rbind(lut,data.frame(intersection_id=i,
-                              orig_id=pols_pols[["origins"]][[i]]))
-    
-  }
-  
-  geoms <- st_geometry(pols_pols[lut$intersection_id,])
-  attributes_df<-polygons[lut$orig_id,]
-  st_geometry(attributes_df)<-NULL
-  result <- cbind(geoms,attributes_df)
-  result <- st_sf(result)
-  return(result)
-  
-}
-
-
-
-
 #### TODO: ####
-
-# change input fires to last mtbs version from GEE, remove focal fires & rerun
-# add code defining the origins of the activities within assign_activities
-
-# 
-# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
+# Summarize severity
 
 #### Read in and prepare Fire and FACTS datasets ####
 
-# fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
-fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
+nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+
+fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
+fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
+# fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
 
 fires = fires %>%
   mutate(Ig_Year = year(Ig_Date)) %>%
   filter(Incid_Type == "Wildfire") %>%
   filter(Ig_Year > 1993 & Ig_Year < 2019)
          
-fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
-fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
-focal.fires.input = read.csv("../../Data/focal_fires_ks.csv", stringsAsFactors=FALSE)
-fires <- prepare_fires(fires,nfs_r5,focal.fires.input)
-
-nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+fires <- prepare_fires(fires,nfs_r5)
 
 facts <- st_read("../../Data/facts_r5.shp")
 
@@ -353,14 +314,14 @@ facts <- facts[,keep]
 facts <- prepare_facts(facts)
 
 #### Conduct intersection and assign activities ####
-facts_fires <- intersect_activities(facts,fires,precission=1000,10)
+facts_fires <- intersect_activities(facts,fires,precision=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                    facts_fires$fires,10)
 
 saveRDS(facts_fires,"facts_fires_2022.RDS")
 
-# facts_fires <- readRDS("facts_fires_2022.RDS")
-facts_fires <- readRDS("facts_fires.RDS")
+
+facts_fires <- readRDS("facts_fires_2022.RDS")
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
@@ -372,10 +333,35 @@ assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Eve
 # assigned_activities <- assigned_activities[,c(keep, "activity_area","facts_polygon_id", "year", "VB_ID")]
 # assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
 
-
 # CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
-assigned_activities_perimeters <- st_cast(assigned_activities,"MULTILINESTRING")
+
+assigned_activities<-assigned_activities[as.numeric(assigned_activities$activity_fire_area)>0,]
+assigned_activities<-assigned_activities[!is.na(assigned_activities$activity_fire_area),]
+assigned_activities <- assigned_activities[!st_geometry_type(assigned_activities)=="POINT",]
+good<-sapply(assigned_activities$geometry,function(x){
+  a<-try(st_cast(x,"MULTILINESTRING"))
+  !inherits(a,"try-error")
+  })
+assigned_activities <- assigned_activities[good,]
+assigned_activities_perimeters <- st_sfc(lapply(assigned_activities$geometry,function(x){
+  if(st_geometry_type(x)=="GEOMETRYCOLLECTION"){
+
+    x <- lapply(x,"[")
+
+    keep <- sapply(x,function(y){
+      is_list(y)
+    })
+    print(keep)
+    x <- x[keep]
+    print(x)
+    print(length(x))
+    x <- st_multipolygon(x)
+  }
+  st_cast(x,"MULTILINESTRING")
+  
+}))
+
 assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))
 assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire_perim_length/assigned_activities$activity_fire_area
 # CREATING difference between activity and fire year
@@ -388,12 +374,8 @@ for(i in fields){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,paste0("IS_",i)]<-is_cat
 } 
-saveRDS(assigned_activities,"assigned_activities_2022.RDS")
 
-# gross vs net areas
-assigned_activities<-readRDS("assigned_activities_2022.RDS")
-comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
-                              diff_years =unique(assigned_activities$diff_years))
+# CREATE ACTIVITY TYPE
 types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
@@ -402,40 +384,5 @@ for(i in types){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
 } 
-
-net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                       function(x,y,assigned_activities){
-                         
-        filtered <- assigned_activities |> 
-                      filter(Ig_Year ==x & diff_years==y)
-        
-        if(dim(filtered)[1]==0){
-          return(NULL)
-        }else{
-          result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
-            summarize(geometry=st_union(geometry),n_dissolved=n(),
-                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-          result$ref_year <-result$Ig_Year+result$diff_years
-          result$net_area <- st_area(result)
-          return(result)
-        }
-                       },assigned_activities=assigned_activities)
-
-
-gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
-                           function(x,y,assigned_activities){
-                             
-                             filtered <- assigned_activities |> 
-                               filter(Ig_Year ==x & diff_years==y)
-                             
-                             if(dim(filtered)[1]==0){
-                               return(NULL)
-                             }else{
-                               result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
-                                 summarize(gross_area=sum(st_area(geometry)),
-                                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
-                               result$ref_year <-result$Ig_Year+result$diff_years
-                               return(result)
-                             }
-                           },assigned_activities=assigned_activities)
+saveRDS(assigned_activities,"assigned_activities_2022.RDS")
 
