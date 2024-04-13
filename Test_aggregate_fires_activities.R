@@ -291,7 +291,7 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
-
+fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 # fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
 # fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 # fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
@@ -320,7 +320,6 @@ facts <- prepare_facts(facts)
 facts_fires <- intersect_activities(facts,fires,precision=1000,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
-
 saveRDS(facts_fires,"facts_fires_2022.RDS")
 
 
@@ -330,11 +329,12 @@ fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
 
-assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","Event_ID")]
-assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="Event_ID")
-
-# assigned_activities <- assigned_activities[,c(keep, "activity_area","facts_polygon_id", "year", "VB_ID")]
-# assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by="VB_ID")
+assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","assigned_fire")]
+assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by.x="assigned_fire",by.y="Event_ID")
+# putting  back assigned_fire as Event_ID 
+colnames(assigned_activities)[which(colnames(assigned_activities)=="assigned_fire")]<-"Event_ID"
+# CREATING difference between activity and fire year
+assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
 
 # CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
@@ -367,8 +367,7 @@ assigned_activities_perimeters <- st_sfc(lapply(assigned_activities$geometry,fun
 
 assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))
 assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire_perim_length/assigned_activities$activity_fire_area
-# CREATING difference between activity and fire year
-assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
+
 
 # CREATE IS_* fields
 fields <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","manage.except.plant","manage")
