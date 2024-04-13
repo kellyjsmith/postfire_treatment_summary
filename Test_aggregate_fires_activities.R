@@ -292,12 +292,12 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 
-fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
-fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
+# fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
+# fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 # fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
 
 fires = fires %>%
-  mutate(Ig_Year = year(Ig_Date)) %>%
+  # mutate(Ig_Year = year(Ig_Date)) %>%
   filter(Incid_Type == "Wildfire") %>%
   filter(Ig_Year > 1993 & Ig_Year < 2019)
 
