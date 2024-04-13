@@ -4,12 +4,63 @@ library("sf")
 library("dplyr")
 library("terra")
 library("tidyverse")
-library("flextable")
-library("insight")
+# library("flextable")
+# library("insight")
 library("units")
 
-assigned_activities = readRDS("assigned_activities.RDS")
+assigned_activities = readRDS("assigned_activities_2022.RDS")
 
+
+comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
+                              diff_years =unique(assigned_activities$diff_years))
+
+net_activities <-
+  map2_dfr(comb_fire_diff$fire_year, comb_fire_diff$diff_years,
+           function(x, y, assigned_activities) {
+             filtered <- assigned_activities |>
+               filter(Ig_Year == x & diff_years == y)
+             
+             if (dim(filtered)[1] == 0) {
+               return(NULL)
+             } else{
+               result <- filtered |> group_by(Event_ID, ACTIVITY_TYPE) |>
+                 summarize(
+                   geometry = st_union(geometry),
+                   n_dissolved = n(),
+                   Ig_Year = first(Ig_Year),
+                   diff_years = first(diff_years)
+                 )
+               result$ref_year <-
+                 result$Ig_Year + result$diff_years
+               result$net_area <- st_area(result)
+               return(result)
+             }
+           }, assigned_activities = assigned_activities)
+
+
+gross_activities <-
+  map2_dfr(comb_fire_diff$fire_year, comb_fire_diff$diff_years,
+           function(x, y, assigned_activities) {
+             filtered <- assigned_activities |>
+               filter(Ig_Year == x &
+                        diff_years == y)
+             
+             if (dim(filtered)[1] == 0) {
+               return(NULL)
+             } else{
+               result <- filtered |> group_by(Event_ID, ACTIVITY_TYPE) |>
+                 summarize(
+                   gross_area = sum(st_area(geometry)),
+                   Ig_Year = first(Ig_Year),
+                   diff_years = first(diff_years)
+                 )
+               result$ref_year <-
+                 result$Ig_Year + result$diff_years
+               return(result)
+             }
+           }, assigned_activities = assigned_activities)
+
+net_over_gross <- merge()
 
 # Convert sf objects to data frames
 assigned_df = st_drop_geometry(assigned_activities)
@@ -17,7 +68,6 @@ facts_df = st_drop_geometry(facts)
 
 # drop units
 units(assigned_df$activity_fire_acres) <- NULL
-
 
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
 summary_facts <- facts_df %>%
@@ -30,12 +80,12 @@ summary_assigned <- assigned_df %>%
   summarise(assigned_activity_acres = sum(activity_area/4046.86, na.rm = TRUE))
 
 # Summarize activity_area by ACTIVITY_TYPE for net_activities_df
-summary_net <- net_activities_df %>%
+summary_net <- net_activities %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(net_activity_acres = sum(net_area/4046.86, na.rm = TRUE))
 
 # Summarize activity_area by ACTIVITY_TYPE for gross_activities_df
-summary_gross <- gross_activities_df %>%
+summary_gross <- gross_activities %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(gross_activity_acres = sum(gross_area/4046.86, na.rm = TRUE))
 
