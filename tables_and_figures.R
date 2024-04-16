@@ -4,11 +4,12 @@ library("sf")
 library("dplyr")
 library("terra")
 library("tidyverse")
-# library("flextable")
-# library("insight")
 library("units")
 
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+
 assigned_activities = readRDS("assigned_activities_2022.RDS")
+facts_fires = readRDS("facts_fires_2022.RDS")
 
 
 comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
@@ -60,42 +61,215 @@ gross_activities <-
              }
            }, assigned_activities = assigned_activities)
 
-net_over_gross <- merge()
 
-# Convert sf objects to data frames
+
+# net_over_gross <- merge()
+
+# Convert sf object to data frame
+gross_activities_df = st_drop_geometry(gross_activities)
+net_activities_df = st_drop_geometry(net_activities)
 assigned_df = st_drop_geometry(assigned_activities)
-facts_df = st_drop_geometry(facts)
+facts = st_drop_geometry(facts_fires$fires_activities)
 
 # drop units
+units(net_activities_df$net_area) <- NULL
+units(gross_activities_df$gross_area) <- NULL
 units(assigned_df$activity_fire_acres) <- NULL
 
+gross_by_fire = gross_activities_df %>%
+  group_by(Event_ID,ref_year) %>%
+  summarize(total_treated_gross = sum(gross_area))
+net_by_fire = net_activities_df %>%
+  group_by(Event_ID,ref_year) %>%
+  summarize(total_treated_net = sum(net_area))
+total_by_fire = merge(gross_by_fire, net_by_fire, by = "Event_ID")
+total_by_fire = total_by_fire %>%
+  mutate(diff = total_treated_gross - total_treated_net)
+  
+
+
+#### Summarize Treatment Area by Category ####
+
+# Group by ig_year and summarize acres
+gross_10yr_by_ig_year = gross_activities_df %>%
+  filter(diff_years <= 10) %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(gross_acres = as.numeric(sum(gross_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = gross_acres)
+gross_5yr_by_ig_year = gross_activities_df %>%
+  filter(diff_years <= 5) %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(gross_acres = as.numeric(sum(gross_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = gross_acres)
+net_10yr_by_ig_year = net_activities_df %>%
+  filter(diff_years <= 10) %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = net_acres)
+net_5yr_by_ig_year = net_activities_df %>%
+  filter(diff_years <= 5) %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = net_acres)
+
+# Filter the data frames for the specified columns
+# net_10yr_by_ig_year_filter1 = net_10yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
+# gross_10yr_by_ig_year_filter1 = gross_10yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
+# net_5yr_by_ig_year_filter1 = net_5yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
+# gross_5yr_by_ig_year_filter1 = gross_5yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
+
+net_10yr_by_ig_year_filter1 = net_10yr_by_ig_year
+gross_10yr_by_ig_year_filter1 = gross_10yr_by_ig_year
+net_5yr_by_ig_year_filter1 = net_5yr_by_ig_year
+gross_5yr_by_ig_year_filter1 = gross_5yr_by_ig_year
+
+# Convert the data frames from wide to long format
+net_10yr_by_ig_year_filter1_long = tidyr::gather(net_10yr_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
+gross_10yr_by_ig_year_filter1_long = tidyr::gather(gross_10yr_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
+net_5yr_by_ig_year_filter1_long = tidyr::gather(net_5yr_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
+gross_5yr_by_ig_year_filter1_long = tidyr::gather(gross_5yr_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
+
+# Add a new column to identify the type of acres
+net_10yr_by_ig_year_filter1_long$type = "net_acres_10yr"
+gross_10yr_by_ig_year_filter1_long$type = "gross_acres_10yr"
+net_5yr_by_ig_year_filter1_long$type = "net_acres_5yr"
+gross_5yr_by_ig_year_filter1_long$type = "gross_acres_5yr"
+
+# Combine the data frames
+combined_10yr_ig_year_filter1 = rbind(net_10yr_by_ig_year_filter1_long, gross_10yr_by_ig_year_filter1_long)
+combined_5yr_ig_year_filter1 = rbind(net_5yr_by_ig_year_filter1_long, gross_5yr_by_ig_year_filter1_long)
+combined_5yr_ig_year_filter1_long = rbind(net_5yr_by_ig_year_filter1_long, gross_5yr_by_ig_year_filter1_long)
+# Spread the data frame to have gross_acres and net_acres in separate columns
+combined_10yr_ig_year_filter1 = spread(combined_10yr_ig_year_filter1, key = type, value = value)
+combined_5yr_ig_year_filter1 = spread(combined_5yr_ig_year_filter1, key = type, value = value)
+
+# Add a new column for the difference between gross and net acres
+combined_10yr_ig_year_filter1$difference = combined_10yr_ig_year_filter1$gross_acres_10yr - combined_10yr_ig_year_filter1$net_acres_10yr
+combined_5yr_ig_year_filter1$difference = combined_5yr_ig_year_filter1$gross_acres_5yr - combined_5yr_ig_year_filter1$net_acres_5yr
+
+
+# Plot difference
+ggplot(combined_10yr_ig_year_filter1, aes(x = Ig_Year)) +
+  geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
+  labs(x = "Ignition Year", y = "Difference (Gross Acres - Net Acres)", color = "Activity Type") +
+  scale_x_continuous(breaks = seq(1993, 2017, 3)) +
+  facet_wrap(~ ACTIVITY_TYPE) +
+  theme_classic()
+ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
+  geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
+  labs(x = "Ignition Year", y = "Difference (Gross Acres - Net Acres)", color = "Activity Type") +
+  scale_x_continuous(breaks = seq(1993, 2017, 3)) +
+  facet_wrap(~ ACTIVITY_TYPE) +
+  theme_classic()
+
+
+# # Assuming df is your data frame and it has two y variables y1 and y2
+# df$color <- ifelse(df$y1 == df$y2, "equal", "not equal")
+# 
+# ggplot(df, aes(x=x)) +
+#   geom_line(aes(y=y1, color=color)) +
+#   geom_line(aes(y=y2, color=color)) +
+#   scale_color_manual(values=c("equal"="red", "not equal"="black"))
+
+
+ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
+  geom_line(aes(y = gross_acres_5yr, color = "Gross Acres")) +
+  geom_line(aes(y = net_acres_5yr, color = "Net Acres")) +
+  ggtitle("Acres Treated in R5 within 5 Years of Fire") +
+  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
+  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 3) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal",
+  )
+
+ggplot(combined_10yr_ig_year_filter1, aes(x = Ig_Year)) +
+  geom_line(aes(y = gross_acres_10yr, color = "Gross Acres")) +
+  geom_line(aes(y = net_acres_10yr, color = "Net Acres")) +
+  ggtitle("Acres Treated in R5 within 10 Years of Fire") +
+  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
+  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 3) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal",
+  )
+
+
+#### Examples ####
+
+ assigned_df %>%
+a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
+
+
+ggplot(net_5yr_by_ig_year_filter1_long) +
+  ggtitle("R5 Net Acres Treated Postfire by Activity Type") +
+  aes(x = Ig_Year, y=ACTIVITY_TYPE, fill=value) + 
+  facet_wrap(~type) +
+  geom_tile(stat = "identity", height=1,width=1,color="grey") + 
+  scale_fill_("Net Acres")
+  # scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) +
+
+ggplot(net_by_prod_ref_year_filter1) +
+  ggtitle("R5 Net Acres Planted Postfire by Productivity Class") +
+  aes(x = ref_year, y=PRODUCTIVI, fill=value) + 
+  geom_tile(stat = "identity", height=1,width=1,color="grey") + 
+  scale_fill_binned("Net Acres")
+# scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2))
+
+ggplot(planting_net_10years) +
+  ggtitle("R5 Net Acres Planted by Years After Fire") +
+  aes(x = Ig_Year, y=years_to_first_plant, fill=net_acres_planted) + 
+  geom_tile(stat = "identity", height=1,width=1,color="gray") + 
+  scale_fill_binned("Net Acres") +
+  scale_x_continuous(breaks=seq(1992,2018,by=4)) + scale_y_continuous(breaks=seq(0,10,by=2))
+
+
+a$activity_year <- a$Ig_Year +a$diff_years
+b <- group_by(a,activity_year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
+
+ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+ 
+  aes(x=activity_year,y=as.numeric(activity_fire_area)/4046.86) + 
+  facet_wrap(~type,ncol=3) + geom_point() + geom_smooth(method="lm") +
+  scale_x_continuous("Year activity",breaks=seq(1998,2022,by=4)) +
+  scale_y_continuous("Acres")
+
+
+ggplot(filter(b,activity_year<=2022 & activity_year>=1993 & type=="prep"))+ 
+  aes(x=activity_year,y=as.numeric(activity_fire_area)/4046.86) + 
+  facet_wrap(~type,ncol=3) + geom_point() + geom_smooth(method="lm") +
+  scale_x_continuous("Year activity",breaks=seq(1998,2022,by=4)) +
+  scale_y_continuous("Acres")
+
+
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
-summary_facts <- facts_df %>%
+facts_acreage <- facts_df %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(facts_activity_acres = sum(activity_area/4046.86, na.rm = TRUE))
 
 # Summarize activity_area by ACTIVITY_TYPE for assigned_df
-summary_assigned <- assigned_df %>%
+assigned_acreage <- assigned_df %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(assigned_activity_acres = sum(activity_area/4046.86, na.rm = TRUE))
 
 # Summarize activity_area by ACTIVITY_TYPE for net_activities_df
-summary_net <- net_activities %>%
+net_acreage <- net_activities %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(net_activity_acres = sum(net_area/4046.86, na.rm = TRUE))
 
 # Summarize activity_area by ACTIVITY_TYPE for gross_activities_df
-summary_gross <- gross_activities %>%
+gross_acreage <- gross_activities %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(gross_activity_acres = sum(gross_area/4046.86, na.rm = TRUE))
 
 # Combine the four tables
-combined_summary <- full_join(summary_assigned, summary_gross, by = "ACTIVITY_TYPE") %>%
-  full_join(summary_net, by = "ACTIVITY_TYPE")
+combined_acreage_summary <- full_join(facts_acreage, assigned_acreage, by = "ACTIVITY_TYPE") %>%
+  full_join(net_acreage, by = "ACTIVITY_TYPE") %>%
+  full_join(gross_acreage, by = "ACTIVITY_TYPE")
 
-ft_combined = flextable(combined_summary)
-ft_combined = theme_vanilla(ft_combined)
-ft_combined
 
 # Plot acreage summary by category with facets
 ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
@@ -114,7 +288,7 @@ units(net_activities_df$net_area) <- NULL
 planting_net_10years <- net_activities_df %>%
   filter(diff_years < 10) %>%
   filter(ACTIVITY_TYPE == "planting") %>%
-  group_by(Ig_Year, VB_ID) %>%
+  group_by(Ig_Year, Event_ID) %>%
   summarize(years_to_first_plant = min(diff_years), avg_years_to_plant = mean(diff_years),
             net_acres_planted = sum(net_area/4046.86))
 
@@ -192,153 +366,4 @@ ggplot(release_10years) +
 
 
 
-#### Summarize Treatment Area by Category ####
-
-# Convert sf object to data frame
-gross_activities_df = st_drop_geometry(gross_activities)
-net_activities_df = st_drop_geometry(net_activities)
-
-
-# Group by ig_year and summarize acres
-gross_by_ig_year = gross_activities_df %>%
-  group_by(Ig_Year, ACTIVITY_TYPE) %>%
-  summarize(gross_acres = as.numeric(sum(gross_area)/4046.86), .groups = 'drop') %>%
-  spread(key = ACTIVITY_TYPE, value = gross_acres)
-gross_5yr_by_ig_year = gross_activities_df %>%
-  filter(diff_years < 5) %>%
-  group_by(Ig_Year, ACTIVITY_TYPE) %>%
-  summarize(gross_acres = as.numeric(sum(gross_area)/4046.86), .groups = 'drop') %>%
-  spread(key = ACTIVITY_TYPE, value = gross_acres)
-net_by_ig_year = net_activities_df %>%
-  group_by(Ig_Year, ACTIVITY_TYPE) %>%
-  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
-  spread(key = ACTIVITY_TYPE, value = net_acres)
-net_5yr_by_ig_year = net_activities_df %>%
-  filter(diff_years < 5) %>%
-  group_by(Ig_Year, ACTIVITY_TYPE) %>%
-  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
-  spread(key = ACTIVITY_TYPE, value = net_acres)
-
-# Filter the data frames for the specified columns
-net_by_ig_year_filter1 = net_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
-gross_by_ig_year_filter1 = gross_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
-net_5yr_by_ig_year_filter1 = net_5yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
-gross_5yr_by_ig_year_filter1 = gross_5yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
-
-net_by_ig_year_filter1 = net_by_ig_year
-gross_by_ig_year_filter1 = gross_by_ig_year
-net_5yr_by_ig_year_filter1 = net_5yr_by_ig_year
-gross_5yr_by_ig_year_filter1 = gross_5yr_by_ig_year
-
-# Convert the data frames from wide to long format
-net_by_ig_year_filter1_long = tidyr::gather(net_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
-gross_by_ig_year_filter1_long = tidyr::gather(gross_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
-net_5yr_by_ig_year_filter1_long = tidyr::gather(net_5yr_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
-gross_5yr_by_ig_year_filter1_long = tidyr::gather(gross_5yr_by_ig_year_filter1, ACTIVITY_TYPE, value, -Ig_Year)
-
-# Add a new column to identify the type of acres
-net_by_ig_year_filter1_long$type = "net_acres"
-gross_by_ig_year_filter1_long$type = "gross_acres"
-net_5yr_by_ig_year_filter1_long$type = "net_acres_5yr"
-gross_5yr_by_ig_year_filter1_long$type = "gross_acres_5yr"
-
-# Combine the data frames
-combined_ig_year_filter1 = rbind(net_by_ig_year_filter1_long, gross_by_ig_year_filter1_long)
-combined_5yr_ig_year_filter1 = rbind(net_5yr_by_ig_year_filter1_long, gross_5yr_by_ig_year_filter1_long)
-combined_5yr_ig_year_filter1_long = rbind(net_5yr_by_ig_year_filter1_long, gross_5yr_by_ig_year_filter1_long)
-# Spread the data frame to have gross_acres and net_acres in separate columns
-combined_ig_year_filter1 = spread(combined_ig_year_filter1, key = type, value = value)
-combined_5yr_ig_year_filter1 = spread(combined_5yr_ig_year_filter1, key = type, value = value)
-
-# Add a new column for the difference between gross and net acres
-combined_ig_year_filter1$difference = combined_ig_year_filter1$gross_acres - combined_ig_year_filter1$net_acres
-combined_5yr_ig_year_filter1$difference = combined_5yr_ig_year_filter1$gross_acres_5yr - combined_5yr_ig_year_filter1$net_acres_5yr
-
-
-# Plot difference
-ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
-  geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
-  labs(x = "Ignition Year", y = "Difference (Gross Acres - Net Acres)", color = "Activity Type") +
-  scale_x_continuous(breaks = seq(1993, 2017, 3)) +
-  facet_wrap(~ ACTIVITY_TYPE) +
-  theme_classic()
-ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
-  geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
-  labs(x = "Ignition Year", y = "Difference (Gross Acres - Net Acres)", color = "Activity Type") +
-  scale_x_continuous(breaks = seq(1993, 2017, 3)) +
-  facet_wrap(~ ACTIVITY_TYPE) +
-  theme_classic()
-
-
-# Plot gross and net with facets
-ggplot(combined_ig_year_filter1, aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_acres, color = "Gross Acres")) +
-  geom_line(aes(y = net_acres, color = "Net Acres")) +
-  labs(x = "Ignition Year", y = "Value", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1993, 2017, 3)) +
-  facet_wrap(~ ACTIVITY_TYPE) +
-  theme_classic()
-
-# Set custom colors
-gross_color <- "darkblue"
-net_color <- "orange"
-
-ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_acres_5yr, color = "Gross Acres")) +
-  geom_line(aes(y = net_acres_5yr, color = "Net Acres")) +
-  ggtitle("Gross and Net Acres Treated within 5 Years of Fire") +
-  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2018, 4)) +
-  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
-  theme_bw() +
-  theme(
-    legend.position = "bottom",
-    legend.box = "horizontal",
-  )
-
-
-#### Examples ####
-
- assigned_df %>%
-a <- group_by(a,diff_years,Ig_Year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
-
-
-ggplot(net_5yr_by_ig_year_filter1_long) +
-  ggtitle("R5 Net Acres Treated Postfire by Activity Type") +
-  aes(x = Ig_Year, y=ACTIVITY_TYPE, fill=value) + 
-  facet_wrap(~type) +
-  geom_tile(stat = "identity", height=1,width=1,color="grey") + 
-  scale_fill_gradient("Net Acres")
-  # scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2)) +
-
-ggplot(net_by_prod_ref_year_filter1) +
-  ggtitle("R5 Net Acres Planted Postfire by Productivity Class") +
-  aes(x = ref_year, y=PRODUCTIVI, fill=value) + 
-  geom_tile(stat = "identity", height=1,width=1,color="grey") + 
-  scale_fill_binned("Net Acres")
-# scale_x_continuous(breaks=c(0:10)) + scale_y_continuous(breaks=seq(1993,2017,by=2))
-
-ggplot(planting_net_10years) +
-  ggtitle("R5 Net Acres Planted by Years After Fire") +
-  aes(x = Ig_Year, y=years_to_first_plant, fill=net_acres_planted) + 
-  geom_tile(stat = "identity", height=1,width=1,color="gray") + 
-  scale_fill_binned("Net Acres") +
-  scale_x_continuous(breaks=seq(1992,2018,by=4)) + scale_y_continuous(breaks=seq(0,10,by=2))
-
-
-a$activity_year <- a$Ig_Year +a$diff_years
-b <- group_by(a,activity_year,type) |> summarize(activity_fire_area=sum(activity_fire_area))
-
-ggplot(filter(b,activity_year<=2018 & activity_year>=1998))+ 
-  aes(x=activity_year,y=as.numeric(activity_fire_area)/4046.86) + 
-  facet_wrap(~type,ncol=3) + geom_point() + geom_smooth(method="lm") +
-  scale_x_continuous("Year activity",breaks=seq(1998,2022,by=4)) +
-  scale_y_continuous("Acres")
-
-
-ggplot(filter(b,activity_year<=2022 & activity_year>=1993 & type=="prep"))+ 
-  aes(x=activity_year,y=as.numeric(activity_fire_area)/4046.86) + 
-  facet_wrap(~type,ncol=3) + geom_point() + geom_smooth(method="lm") +
-  scale_x_continuous("Year activity",breaks=seq(1998,2022,by=4)) +
-  scale_y_continuous("Acres")
 
