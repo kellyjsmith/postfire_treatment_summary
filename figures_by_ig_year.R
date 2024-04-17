@@ -87,6 +87,13 @@ total_by_fire = total_by_fire %>%
   mutate(diff = total_treated_gross - total_treated_net)
 
 
+acres_burned_by_fire = assigned_df %>%
+  group_by(Ig_Year, Event_ID) %>%
+  distinct(Event_ID, .keep_all = TRUE) %>%
+  summarize(acres_burned = sum(sumBurnBndAc, na.rm = TRUE))
+acres_burned_by_year = acres_burned_by_fire %>%
+  group_by(Ig_Year) %>%
+  summarize(acres_burned = sum(acres_burned, na.rm = TRUE))
 
 #### Summarize Treatment Area by Category ####
 
@@ -111,6 +118,13 @@ net_5yr_by_ig_year = net_activities_df %>%
   group_by(Ig_Year, ACTIVITY_TYPE) %>%
   summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
   spread(key = ACTIVITY_TYPE, value = net_acres)
+
+net_planting_ig_year = net_activities %>%
+  filter(ACTIVITY_TYPE == "planting") %>%
+  group_by(Ig_Year, ACTIVITY_TYPE) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop') %>%
+  spread(key = ACTIVITY_TYPE, value = net_acres)
+
 
 # Filter the data frames for the specified columns
 # net_10yr_by_ig_year_filter1 = net_10yr_by_ig_year[, c("Ig_Year", "planting", "release", "replant", "thin")]
@@ -198,30 +212,52 @@ ggplot(combined_10yr_ig_year_filter1, aes(x = Ig_Year)) +
   )
 
 
-# Summarize net planting cert by ig_year
-net_cert_by_igyear = net_activities %>%
+# Summarize net cert by ig_year
+net_cert_by_igyear = net_activities_df %>%
   filter(ACTIVITY_TYPE == "cert_planted") %>%
   group_by(Ig_Year) %>%
   summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop')
 
-# Plot net planting cert by ig_year
-ggplot(net_cert_by_refor_igyear, aes(x = Ig_Year)) +
+net_planting_by_igyear = net_activities_df %>%
+  filter(ACTIVITY_TYPE == "planting") %>%
+  group_by(Ig_Year) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop')
+
+
+net_plant_cert_fire = full_join(net_planting_by_igyear, net_cert_by_igyear, by = "Ig_Year") %>%
+  full_join(acres_burned_by_year, by = "Ig_Year")
+net_plant_cert_fire = rename(net_plant_cert_fire, "planting_acres" = net_acres.x, "cert_acres" = net_acres.y)
+# Convert the data frames from wide to long format
+net_plant_cert_fire = tidyr::gather(net_plant_cert_fire, type, net_acres, -Ig_Year)
+  
+
+# Plot net cert by ig_year
+ggplot(net_cert_by_igyear, aes(x = Ig_Year)) +
   ggtitle("R5 Net Postfire Planting Acres Certified by Ignition Year, 1994 - 2018") +
   geom_bar(aes(y = net_acres), stat = "identity") +
   labs(x = "Ignition Year", y = "Net Acres") +
-  scale_x_continuous(breaks = seq(1990, 2016, 4)) +
+  scale_x_continuous(breaks = seq(1990, 2020, 4)) +
   theme_bw()+
   theme(legend.position="bottom", legend.box = "horizontal")
 
-# Plot net by reforestation status
-ggplot(net_cert_by_refor) +
-  ggtitle("R5 Net Postfire Acres Planted by Reforestation Status, 1994 - 2023") +
-  aes(x = cut(ref_year, breaks = seq(min(ref_year), max(ref_year)+5, by = 5), include.lowest = TRUE, 
-              labels = paste(seq(min(ref_year), max(ref_year), by = 5), seq(min(ref_year)+4, max(ref_year)+4, by = 5), sep=" - ")), 
-      y=REFORESTAT, fill=net_acres) + 
-  geom_tile(stat = "identity", height=1,width=1,color="gray") + 
-  scale_fill_gradient("Net Acres", low = "lightgray", high = "black") +
-  scale_x_discrete() +
-  xlab("Activity Year") +
-  ylab("Reforestation Status") +
-  theme_bw()
+# Modify the type variable labels
+net_plant_cert_fire$type <- recode(net_plant_cert_fire$type,
+                                   acres_burned = "Burned",
+                                   cert_acres = "Net Certified-Planted",
+                                   planting_acres = "Net Planted")
+net_plant_cert_fire$type = factor(net_plant_cert_fire$type,
+                                  levels = c("Net Certified-Planted", "Net Planted","Burned"))
+
+# Plot net planting + cert by ig_year
+ggplot(net_plant_cert_fire, aes(x = Ig_Year, y = net_acres, fill = type)) +
+  geom_bar(stat = "identity") +
+  facet_grid(rows = vars(type), scales = "free_y") +
+  ggtitle("R5 Burned, Net Planted, and Net Certified-Planted Acres by Ignition Year" , ) +
+  labs(x = "Ignition Year", y = "Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 4)) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_manual(values = c("Net Certified-Planted" = "blue", "Net Planted" = "green", "Burned" = "red")) +
+  theme_bw() +
+  theme(legend.position="bottom", legend.box = "horizontal") +
+  theme(plot.title = element_text(size=12)) +
+  guides(fill=guide_legend(title=NULL)) # Remove legend title

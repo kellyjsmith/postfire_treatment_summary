@@ -69,3 +69,19 @@ ggplot(combined_ref_year_filter3, aes(x = ref_year)) +
   theme_bw()+
   theme(legend.position="bottom", legend.box = "horizontal")
 
+
+# Summarize net planting cert by ref_year
+net_cert_by_refyear = net_activities %>%
+  filter(ACTIVITY_TYPE == "cert_planted") %>%
+  group_by(ref_year) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop')
+
+# Plot net planting cert by ref_year
+ggplot(net_cert_by_refor_refyear, aes(x = ref_year)) +
+  ggtitle("R5 Net Postfire Planting Acres Certified by Activity Year, 1994 - 2022") +
+  geom_bar(aes(y = net_acres), stat = "identity") +
+  labs(x = "Activity Year", y = "Net Acres") +
+  scale_x_continuous(breaks = seq(1990, 2022, 4)) +
+  theme_bw()+
+  theme(legend.position="bottom", legend.box = "horizontal")
+
