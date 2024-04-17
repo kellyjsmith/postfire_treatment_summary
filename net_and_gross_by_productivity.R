@@ -11,7 +11,7 @@ net_activities_productivity <- map2_dfr(
       if(dim(filtered)[1]==0){
         return(NULL)
       }else{
-        result <- filtered |> group_by(VB_ID,ACTIVITY_TYPE,PRODUCTIVI) |> 
+        result <- filtered |> group_by(Event_ID,ACTIVITY_TYPE,PRODUCTIVI) |> 
           summarize(geometry=st_union(geometry),n_dissolved=n(),
                     Ig_Year=first(Ig_Year),diff_years=first(diff_years),
                     PRODUCTIVI=first(PRODUCTIVI))
@@ -34,7 +34,7 @@ gross_activities_productivity <- map2_dfr(
        if(dim(filtered)[1]==0){
          return(NULL)
        }else{
-         result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE,PRODUCTIVI)|> 
+         result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE,PRODUCTIVI)|> 
            summarize(gross_area=sum(st_area(geometry)),
                      Ig_Year=first(Ig_Year),diff_years=first(diff_years))
          result$ref_year <-result$Ig_Year+result$diff_years
@@ -92,14 +92,7 @@ combined_prod_ref_year_filter1 = spread(combined_prod_ref_year_filter1, key = ty
 combined_prod_ref_year_filter1$difference = combined_prod_ref_year_filter1$gross_planting_acres - 
   combined_prod_ref_year_filter1$net_planting_acres
 
-# Plot difference
-ggplot(combined_prod_ref_year_filter1, aes(x = ref_year)) +
-  geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
-  labs(x = "Activity Year", y = "Difference (Gross Acres - Net Acres)", color = "Activity Type") +
-  scale_x_continuous(breaks = seq(1992, 2022, 4)) +
-  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
-  theme_classic() +
-  theme(legend.position="bottom", legend.box = "horizontal")
+
 
 # Plot gross and net with facets
 ggplot(combined_prod_ref_year_filter1, aes(x = ref_year)) +
@@ -107,17 +100,30 @@ ggplot(combined_prod_ref_year_filter1, aes(x = ref_year)) +
   geom_line(aes(y = net_planting_acres, color = "Net Planting Acres")) +
   ggtitle("Gross and Net Acres Planted by Productivity Class in R5") +
   labs(x = "Activity Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2023, 4)) +
+  scale_x_continuous(breaks = seq(1992, 2024, 4)) +
   facet_wrap(~ PRODUCTIVI, ncol = 2) +
   theme_bw()+
   theme(legend.position="bottom", legend.box = "horizontal")
 
 # Plot gross and net with facets
 ggplot(combined_prod_ref_year_filter1) +
-  ggtitle("Net Postfire Acres Planted in R5 by Productivity Class, 1993 - 2022") +
+  ggtitle("Net Postfire Acres Planted in R5 by Productivity Class, 1994 - 2023") +
   geom_bar(aes(x = PRODUCTIVI, y = net_planting_acres), stat = "identity") +
   labs(x = "Productivity Class", y = "Net Planted Acres") +
   theme_bw()+
   theme(legend.position="bottom", legend.box = "horizontal")
+
+ggplot(net_planting_by_productivity) +
+  ggtitle("R5 Net Postfire Acres Planted by Productivity Class, 1994 - 2023") +
+  aes(x = cut(ref_year, breaks = seq(min(ref_year), max(ref_year)+5, by = 5), include.lowest = TRUE, 
+      labels = paste(seq(min(ref_year), max(ref_year), by = 5), seq(min(ref_year)+4, max(ref_year)+4, by = 5), sep=" - ")), 
+      y=PRODUCTIVI, fill=net_planting_acres) + 
+  geom_tile(stat = "identity", height=1,width=1,color="gray") + 
+  scale_fill_gradient("Net Acres", low = "lightgray", high = "black") +
+  scale_x_discrete() +
+  xlab("Activity Year") +
+  ylab("Productivity Class") +
+  theme_bw()
+
 
 

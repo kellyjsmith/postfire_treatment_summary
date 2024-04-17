@@ -49,23 +49,23 @@ gross_activities_reforestation <- map2_dfr(
 #### Summarize Treatment Area by reforestation Class ####
 
 # Convert sf object to data frame
-gross_activities_prod_df = st_drop_geometry(gross_activities_reforestation)
-net_activities_prod_df = st_drop_geometry(net_activities_reforestation)
+gross_activities_refor_df = st_drop_geometry(gross_activities_reforestation)
+net_activities_refor_df = st_drop_geometry(net_activities_reforestation)
 
 # Group by ref_year and summarize acres
-gross_REFORESTAT = gross_activities_prod_df %>%
+gross_refor_5yr = gross_activities_refor_df %>%
   # filter(ACTIVITY_TYPE == "planting") %>%
   group_by(ref_year, REFORESTAT) %>%
   summarize(gross_acres = as.numeric(sum(gross_area)/4046.86), .groups = 'drop')
-net_REFORESTAT = net_activities_prod_df %>%
+net_refor_5yr = net_activities_refor_df %>%
   # filter(ACTIVITY_TYPE == "planting") %>%
   group_by(ref_year, REFORESTAT) %>%
   summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop')
 
 
 # Filter the data frames for the specified columns
-net_by_REFORESTAT_filter1 = net_REFORESTAT
-gross_by_REFORESTAT_filter1 = gross_REFORESTAT
+net_by_refor_filter1 = gross_refor_5yr
+gross_by_refor_filter1 = net_refor_5yr
 
 # net_by_prod_ref_year_filter1 = net_by_prod_ref_year[, c("ref_year", "planting", "release", "replant", "thin")]
 # gross_by_prod_ref_year_filter1 = gross_by_prod_ref_year[, c("ref_year", "planting", "release", "replant", "thin")]
@@ -78,25 +78,37 @@ gross_by_REFORESTAT_filter1 = gross_REFORESTAT
 # Add a new column to identify the type of acres and rename acreage columns
 # net_by_prod_ref_year_filter1_long$type = "net_planting_acres"
 # gross_by_prod_ref_year_filter1_long$type = "gross_planting_acres"
-net_by_REFORESTAT_filter1$type = "net_acres"
-gross_by_REFORESTAT_filter1$type = "gross_acres"
+net_by_refor_filter1$type = "net_acres"
+gross_by_refor_filter1$type = "gross_acres"
 
-colnames(net_by_REFORESTAT_filter1)[colnames(net_by_REFORESTAT_filter1)=="net_acres"] <- "value"
-colnames(gross_by_REFORESTAT_filter1)[colnames(gross_by_REFORESTAT_filter1)=="gross_acres"] <- "value"
+colnames(net_by_refor_filter1)[colnames(net_by_refor_filter1)=="net_acres"] <- "value"
+colnames(gross_by_refor_filter1)[colnames(gross_by_refor_filter1)=="gross_acres"] <- "value"
 
 # Combine the data frames
 # combined_prod_ref_year_filter1 = rbind(net_by_prod_ref_year_filter1_long, gross_by_prod_ref_year_filter1_long)
-combined_by_REFORESTAT_filter1 = rbind(net_by_REFORESTAT_filter1, gross_by_REFORESTAT_filter1)
+combined_by_refor_filter1 = rbind(net_by_refor_filter1, gross_by_refor_filter1)
 
 # Spread the data frame to have gross_acres and net_acres in separate columns
-combined_by_REFORESTAT_filter1 = spread(combined_by_REFORESTAT_filter1, key = type, value = value)
+combined_by_refor_filter1 = spread(combined_by_refor_filter1, key = type, value = value)
 
 # Add a new column for the difference between gross and net acres
-combined_by_REFORESTAT_filter1$difference = combined_by_REFORESTAT_filter1$gross_acres - 
-  combined_by_REFORESTAT_filter1$net_acres
+combined_by_refor_filter1$difference = combined_by_refor_filter1$gross_acres - 
+  combined_by_refor_filter1$net_acres
+
+net_cert_by_refor_refyear = net_activities_reforestation %>%
+  filter(ACTIVITY_TYPE == "cert_planted") %>%
+  group_by(ref_year, REFORESTAT) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop')
+
+# Summarize net planting cert by ig_year
+net_cert_by_refor_igyear = net_activities_reforestation %>%
+  filter(ACTIVITY_TYPE == "cert_planted") %>%
+  group_by(Ig_Year, REFORESTAT) %>%
+  summarize(net_acres = as.numeric(sum(net_area)/4046.86), .groups = 'drop')
+
 
 # Plot difference
-ggplot(combined_prod_ref_year_filter1, aes(x = ref_year)) +
+ggplot(combined_by_refor_filter1, aes(x = ref_year)) +
   geom_line(aes(y = difference, color = ACTIVITY_TYPE)) +
   labs(x = "Activity Year", y = "Difference (Gross Acres - Net Acres)", color = "Activity Type") +
   scale_x_continuous(breaks = seq(1992, 2022, 4)) +
@@ -105,7 +117,7 @@ ggplot(combined_prod_ref_year_filter1, aes(x = ref_year)) +
   theme(legend.position="bottom", legend.box = "horizontal")
 
 # Plot gross and net with facets
-ggplot(combined_by_REFORESTAT_filter1, aes(x = ref_year)) +
+ggplot(combined_by_refor_filter1, aes(x = ref_year)) +
   geom_line(aes(y = gross_acres, color = "Gross Acres")) +
   geom_line(aes(y = net_acres, color = "Net Acres")) +
   ggtitle("Gross and Net Acres Treated by Reforestation Class in R5") +
@@ -116,11 +128,35 @@ ggplot(combined_by_REFORESTAT_filter1, aes(x = ref_year)) +
   theme(legend.position="bottom", legend.box = "horizontal")
 
 # Plot gross and net with facets
-ggplot(combined_prod_ref_year_filter1) +
-  ggtitle("Net Postfire Acres Planted in R5 by Reforestation Class, 1993 - 2022") +
-  geom_bar(aes(x = REFORESTAT, y = net_planting_acres), stat = "identity") +
-  labs(x = "reforestation Class", y = "Net Planted Acres") +
+ggplot(net_cert_by_refor_igyear) +
+  ggtitle("R5 Net Postfire Treatment Acres by Reforestation Status, 1994 - 2023") +
+  geom_bar(aes(x = Ig_Year, y = net_acres), stat = "identity") +
+  labs(x = "Reforestation Status", y = "Net Acres") +
+  scale_fill_binned() +
   theme_bw()+
   theme(legend.position="bottom", legend.box = "horizontal")
+
+# Plot net planting cert by 
+ggplot(net_cert_by_refor_igyear) +
+  ggtitle("R5 Net Postfire Acres Certified, 1994 - 2018") +
+  geom_tile(aes(x = Ig_Year, y = REFORESTAT, fill = net_acres), stat = "identity") +
+  labs(x = "Ignition Year", y = "Refor Status") +
+  scale_y_discrete() +
+  theme_bw()+
+  theme(legend.position="bottom", legend.box = "horizontal")
+
+# Plot net by reforestation status
+ggplot(net_cert_by_refor_igyear) +
+  ggtitle("R5 Net Postfire Acres Planted by Reforestation Status, 1994 - 2023") +
+  aes(x = cut(Ig_Year, breaks = seq(min(Ig_Year), max(Ig_Year)+5, by = 5), include.lowest = TRUE, 
+              labels = paste(seq(min(Ig_Year), max(Ig_Year), by = 5), seq(min(Ig_Year)+4, max(Ig_Year)+4, by = 5), sep=" - ")), 
+      y=REFORESTAT, fill=net_acres) + 
+  geom_tile(stat = "identity", height=1,width=1,color="gray") + 
+  scale_fill_gradient("Net Acres", low = "lightgray", high = "black") +
+  scale_x_discrete() +
+  xlab("Ignition Year") +
+  ylab("Reforestation Status") +
+  theme_bw()
+
 
 

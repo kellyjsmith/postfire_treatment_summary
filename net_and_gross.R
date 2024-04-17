@@ -15,7 +15,7 @@ comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
                               diff_years =unique(assigned_activities$diff_years))
 
 # create list of treatment categories for assigning activity type
-types <- c("planting","salvage","prep","release","thin","replant","prune","fuel")
+types <- c("planting","salvage","prep","release","thin","replant","prune","fuel","cert","review","need")
 
 # Create activity type fields
 assigned_activities$ACTIVITY_TYPE<-NA
@@ -38,7 +38,7 @@ for(i in types){
 # loop through each pair of fire_year and diff_year combos and filter the assigned_activities
   # where ig_year = diff_year. For each combo, group by fire id and activity type,then
   # summarize within that grouping by unioning (net) or totaling (gross) the geometries
-net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+net_activities_v2 <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                            function(x,y,assigned_activities){
                              
                              filtered <- assigned_activities |> 
@@ -47,7 +47,7 @@ net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                              if(dim(filtered)[1]==0){
                                return(NULL)
                              }else{
-                               result <- filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                               result <- filtered |> group_by(assigned_fire,ACTIVITY_TYPE)|> 
                                  summarize(geometry=st_union(geometry),n_dissolved=n(),
                                            Ig_Year=first(Ig_Year),diff_years=first(diff_years))
                                result$ref_year <-result$Ig_Year+result$diff_years
@@ -57,7 +57,7 @@ net_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                            },assigned_activities=assigned_activities)
 
 
-gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
+gross_activities_v2 <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                              function(x,y,assigned_activities){
                                
                                filtered <- assigned_activities |> 
@@ -66,7 +66,7 @@ gross_activities <- map2_dfr(comb_fire_diff$fire_year,comb_fire_diff$diff_years,
                                if(dim(filtered)[1]==0){
                                  return(NULL)
                                }else{
-                                 result <-filtered |> group_by(VB_ID,ACTIVITY_TYPE)|> 
+                                 result <-filtered |> group_by(Event_ID,ACTIVITY_TYPE)|> 
                                    summarize(gross_area=sum(st_area(geometry)),
                                              Ig_Year=first(Ig_Year),diff_years=first(diff_years))
                                  result$ref_year <-result$Ig_Year+result$diff_years
