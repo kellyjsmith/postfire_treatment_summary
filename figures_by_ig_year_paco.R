@@ -121,6 +121,21 @@ ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +
   )
 
 
+ggplot(gross_net_nyears[gross_net_nyears$nyears==10,], aes(x = Ig_Year)) +
+  geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
+  geom_line(aes(y = net_area_ac, color = "Net Acres")) +
+  ggtitle( "Acres Treated in R5 within 10 after fire") +
+  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
+  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
+  # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal",
+  )
+
+
 
 comb_fire_diff <- expand.grid(fire_year = unique(assigned_activities$Ig_Year),
                               diff_years =unique(assigned_activities$diff_years))
