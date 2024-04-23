@@ -6,7 +6,7 @@ library("terra")
 library("tidyverse")
 library("units")
 
-# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
 
 assigned_activities = readRDS("assigned_activities_2022.RDS")
 facts_fires = readRDS("facts_fires_2022.RDS")
@@ -28,7 +28,7 @@ net_gross_start_end <- function(start,end,assigned_activities){
       )
     net_gross$net_area <- st_area(net_gross)
     
-    result <- net_gross |> group_by( ACTIVITY_TYPE) |>
+    result <- net_gross |> group_by(ACTIVITY_TYPE) |>
       summarize(
         net_area = sum(net_area),
         gross_area = sum(gross_area)
@@ -40,10 +40,10 @@ net_gross_start_end <- function(start,end,assigned_activities){
   }
 }
 
-gross_net_time <- map2_dfr(rep(2000,17),c(2000:2016),
+gross_net_time <- map2_dfr(rep(1994,30),c(1994:2023),
                            net_gross_start_end,assigned_activities=assigned_activities)
 
-# Cumulative area since 2000
+# Cumulative area since start
 gross_net_time$net_area_ac <- as.numeric(gross_net_time$net_area)/4046.86
 gross_net_time$gross_area_ac <- as.numeric(gross_net_time$gross_area)/4046.86
 ggplot(gross_net_time, aes(x = end)) +
@@ -51,7 +51,7 @@ ggplot(gross_net_time, aes(x = end)) +
   geom_line(aes(y = net_area_ac, color = "Net Acres")) +
   ggtitle("Cumulative Acres Treated in R5 within fires") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
+  scale_x_continuous(breaks = seq(1990, 2020, 6)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
   # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
   theme_bw() +
@@ -61,19 +61,20 @@ ggplot(gross_net_time, aes(x = end)) +
   )
 
 
-gross_net_time_5years <- map2_dfr(rep(2000,17),c(2000:2016),
+
+gross_net_time_5years <- map2_dfr(rep(1994,25),c(1994:2018),
                            net_gross_start_end,
                            assigned_activities=assigned_activities[assigned_activities$diff_years<=5,])
 
-# Cumulative area since 2000 only activities within 5 years of ignition
+# Cumulative area since 1994, only activities within 5 years of ignition
 gross_net_time_5years$net_area_ac <- as.numeric(gross_net_time_5years$net_area)/4046.86
 gross_net_time_5years$gross_area_ac <- as.numeric(gross_net_time_5years$gross_area)/4046.86
 ggplot(gross_net_time_5years, aes(x = end)) +
   geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
   geom_line(aes(y = net_area_ac, color = "Net Acres")) +
-  ggtitle("Cumulative Acres Treated in R5 within fires, treatment at most 5 years after ignition") +
+  ggtitle("R5 Cumulative Postfire Acres Treated within 5 Years of Ignition") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
+  scale_x_continuous(breaks = seq(1990, 2020, 6)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
   # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
   theme_bw() +
@@ -81,6 +82,155 @@ ggplot(gross_net_time_5years, aes(x = end)) +
     legend.position = "bottom",
     legend.box = "horizontal",
   )
+
+
+# Filter the data frames for category groupings
+filter1 = c("planting")
+filter2 = c("prep","replant","release")
+filter3 = c("prune")
+filter4 = c("harvest_salvage","harvest","thin")
+filter5 = c("cert_planted","cert_tsi","survey","review","need")
+
+gross_net_time_f1 = gross_net_time %>%
+  filter(ACTIVITY_TYPE %in% filter1)
+gross_net_time_f2 = gross_net_time %>%
+  filter(ACTIVITY_TYPE %in% filter2)
+gross_net_time_f3 = gross_net_time %>%
+  filter(ACTIVITY_TYPE %in% filter3)
+gross_net_time_f4 = gross_net_time %>%
+  filter(ACTIVITY_TYPE %in% filter4)
+gross_net_time_f5 = gross_net_time %>%
+  filter(ACTIVITY_TYPE %in% filter5)
+
+gross_net_time_5years_f1 = gross_net_time_5years %>%
+  filter(ACTIVITY_TYPE %in% filter1)
+gross_net_time_5years_f2 = gross_net_time_5years %>%
+  filter(ACTIVITY_TYPE %in% filter2)
+gross_net_time_5years_f3 = gross_net_time_5years %>%
+  filter(ACTIVITY_TYPE %in% filter3)
+gross_net_time_5years_f4 = gross_net_time_5years %>%
+  filter(ACTIVITY_TYPE %in% filter4)
+gross_net_time_5years_f5 = gross_net_time_5years %>%
+  filter(ACTIVITY_TYPE %in% filter5)
+
+# Plot cumulative area by category grouping
+ggplot() +
+  theme_bw() +
+  geom_area(data = gross_net_time_f1, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"),alpha = 0.9) +
+  geom_area(data = gross_net_time_f1, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"),alpha = 0.9) +
+  geom_line(data = gross_net_time_5years_f1, aes(x = end, y = gross_area_ac, color = "Gross Acres within 5 Years"), size = 1.25) +
+  geom_line(data = gross_net_time_5years_f1, aes(x = end, y = net_area_ac, color = "Net Acres within 5 Years"), size = 1.25) +
+  # geom_line(data = gross_net_time_5years_f1, aes(x = end, y = equal_acres, color = "5-yr Gross = 5-yr Net (~1 m^2)"), size = 1.25) +
+  ggtitle("R5 Reforestation Activities Completed to Date, by Ignition Year") +
+  labs(x = "", y = "Activity Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 5)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
+  # scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "black")) +
+  scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
+  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  theme(legend.position = "none") +
+  guides(fill="none")
+
+ggplot() +
+  theme_bw() +
+  geom_area(data = gross_net_time_f2, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"),alpha = 0.9) +
+  geom_area(data = gross_net_time_f2, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"),alpha = 0.9) +
+  geom_line(data = gross_net_time_5years_f2, aes(x = end, y = gross_area_ac, color = "Gross Acres within 5 Years"), size = 1.25) +
+  geom_line(data = gross_net_time_5years_f2, aes(x = end, y = net_area_ac, color = "Net Acres within 5 Years"), size = 1.25) +
+  # geom_line(data = gross_net_time_5years_f1, aes(x = end, y = equal_acres, color = "5-yr Gross = 5-yr Net (~1 m^2)"), size = 1.25) +
+  ggtitle("R5 Reforestation Activities Completed to Date, by Ignition Year") +
+  labs(x = "", y = "Activity Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 5)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
+  # scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "black")) +
+  scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
+  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  theme(legend.position = "none") +
+  guides(fill="none")
+
+ggplot() +
+  theme_bw() +
+  geom_area(data = gross_net_time_f3, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"),alpha = 0.9) +
+  geom_area(data = gross_net_time_f3, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"),alpha = 0.9) +
+  geom_line(data = gross_net_time_5years_f3, aes(x = end, y = gross_area_ac, color = "Gross Acres within 5 Years"), size = 1.25) +
+  geom_line(data = gross_net_time_5years_f3, aes(x = end, y = net_area_ac, color = "Net Acres within 5 Years"), size = 1.25) +
+  # geom_line(data = gross_net_time_5years_f1, aes(x = end, y = equal_acres, color = "5-yr Gross = 5-yr Net (~1 m^2)"), size = 1.25) +
+  ggtitle("R5 Reforestation Activities Completed to Date, by Ignition Year") +
+  labs(x = "", y = "Activity Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 5)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
+  # scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "black")) +
+  scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
+  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  theme(legend.position = "none") +
+  guides(fill="none")
+
+ggplot() +
+  theme_bw() +
+  geom_area(data = gross_net_time_f4, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"),alpha = 0.9) +
+  geom_area(data = gross_net_time_f4, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"),alpha = 0.9) +
+  geom_line(data = gross_net_time_5years_f4, aes(x = end, y = gross_area_ac, color = "Gross Acres within 5 Years"), size = 1.25) +
+  geom_line(data = gross_net_time_5years_f4, aes(x = end, y = net_area_ac, color = "Net Acres within 5 Years"), size = 1.25) +
+  # geom_line(data = gross_net_time_5years_f1, aes(x = end, y = equal_acres, color = "5-yr Gross = 5-yr Net (~1 m^2)"), size = 1.25) +
+  ggtitle("R5 Reforestation Activities Completed to Date, by Ignition Year") +
+  labs(x = "", y = "Activity Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 5)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
+  # scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "black")) +
+  scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
+  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  theme(legend.position = "none") +
+  guides(fill="none")
+
+ggplot() +
+  theme_bw() +
+  geom_area(data = gross_net_time_f5, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"),alpha = 0.9) +
+  geom_area(data = gross_net_time_f5, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"),alpha = 0.9) +
+  geom_line(data = gross_net_time_5years_f5, aes(x = end, y = gross_area_ac, color = "Gross Acres within 5 Years"), size = 1.25) +
+  geom_line(data = gross_net_time_5years_f5, aes(x = end, y = net_area_ac, color = "Net Acres within 5 Years"), size = 1.25) +
+  # geom_line(data = gross_net_time_5years_f1, aes(x = end, y = equal_acres, color = "5-yr Gross = 5-yr Net (~1 m^2)"), size = 1.25) +
+  ggtitle("R5 Reforestation Activities Completed to Date, by Ignition Year") +
+  labs(x = "", y = "Activity Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 5)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 2) +
+  # scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "black")) +
+  scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
+  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  theme(legend.position = "none") +
+  guides(fill="none")
+
+
+
+# gridExtra::grid.arrange(c1, c2, c3, c4, c5, ncol = 1)
+
+ggplot() +
+  theme_bw() +
+  geom_area(data = gross_net_time, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"),alpha = 0.9) +
+  geom_area(data = gross_net_time, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"),alpha = 0.9) +
+  geom_line(data = gross_net_time_5years, aes(x = end, y = gross_area_ac, color = "Gross Acres within 5 Years"), size = 1.25) +
+  geom_line(data = gross_net_time_5years, aes(x = end, y = net_area_ac, color = "Net Acres within 5 Years"), size = 1.25) +
+  # geom_line(data = gross_net_time_5years_f1, aes(x = end, y = equal_acres, color = "5-yr Gross = 5-yr Net (~1 m^2)"), size = 1.25) +
+  ggtitle("R5 Reforestation Activities Completed to Date, by Ignition Year") +
+  labs(x = "Ignition Year", y = "Activity Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 6)) +
+  facet_wrap(~ ACTIVITY_TYPE, ncol = 3, scales = "free_y") +
+  scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
+  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  theme(legend.position = "none") +
+  guides(fill="none")
+
 
 
 net_gross_nyears <- function(nyears,assigned_activities){
@@ -106,14 +256,14 @@ gross_net_nyears <- map_dfr(rep(1:10),net_gross_nyears,assigned_activities=assig
 
 gross_net_nyears$net_area_ac <- as.numeric(gross_net_nyears$net_area)/4046.86
 gross_net_nyears$gross_area_ac <- as.numeric(gross_net_nyears$gross_area)/4046.86
+
 ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +
   geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
   geom_line(aes(y = net_area_ac, color = "Net Acres")) +
-  ggtitle( "Acres Treated in R5 within 5 after fire") +
+  ggtitle( "R5 Postfire Acres Treated within 5 Years of Ignition") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
   scale_x_continuous(breaks = seq(1992, 2020, 6)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
-  # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
   theme_bw() +
   theme(
     legend.position = "bottom",
@@ -124,11 +274,10 @@ ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +
 ggplot(gross_net_nyears[gross_net_nyears$nyears==10,], aes(x = Ig_Year)) +
   geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
   geom_line(aes(y = net_area_ac, color = "Net Acres")) +
-  ggtitle( "Acres Treated in R5 within 10 after fire") +
+  ggtitle( "R5 Postfire Acres Treated within 10 Years of Ignition") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
   scale_x_continuous(breaks = seq(1992, 2020, 6)) +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
-  # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
   theme_bw() +
   theme(
     legend.position = "bottom",
