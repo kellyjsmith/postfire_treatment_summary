@@ -45,6 +45,8 @@ ggplot(filter(b,activity_year<=2022 & activity_year>=1993 & type=="prep"))+
   scale_y_continuous("Acres")
 
 
+# SUMMARY TABLES BY CATEGORY ####
+
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
 facts_acreage <- facts_df %>%
   group_by(ACTIVITY_TYPE) %>%
@@ -124,23 +126,21 @@ ggplot(planting_10years) +
 
 
 # Release Summary & Trends
-release_10years <- assigned_df %>%
+net_release_10years = net_activities_df %>%
   filter(diff_years < 10) %>%
-  filter(ACTIVITY_TYPE == "release")
-
-release_10years = release_10years %>%
-  group_by(Ig_Year, VB_ID) %>%
+  filter(ACTIVITY_TYPE == "release") %>%
+  group_by(Ig_Year, Event_ID) %>%
   summarize(years_to_first_release = min(diff_years), 
             avg_years_to_release = mean(diff_years),
-            net_acres_released = sum(activity_fire_acres))
+            net_acres_released = sum(net_area/4046.86))
 
-release_10years = release_10years %>%
+net_release_10years_summary = net_release_10years %>%
   group_by(Ig_Year) %>%
   summarize(avg_years_to_first_release = mean(years_to_first_release), 
             wtd_avg_years_to_release = mean(avg_years_to_release),
             total_net_acres_released = sum(net_acres_released))
 
-ggplot(release_10years) +
+ggplot(net_release_10years_summary) +
   aes(x = Ig_Year, y = total_net_acres_released) +
   geom_point() +
   geom_smooth(method = "lm") +
@@ -148,7 +148,7 @@ ggplot(release_10years) +
   scale_y_continuous("Total Postfire Acres Released") +
   theme_classic()
 
-ggplot(release_10years) +
+ggplot(net_release_10years_summary) +
   aes(x = Ig_Year, y = avg_years_to_first_release) +
   geom_point() +
   geom_smooth(method = "lm") +
@@ -156,7 +156,7 @@ ggplot(release_10years) +
   scale_y_continuous("Average Years Until First Release") +
   theme_bw()
 
-ggplot(release_10years) +
+ggplot(net_release_10years_summary) +
   aes(x = Ig_Year, y = wtd_avg_years_to_release) +
   geom_point() +
   geom_smooth(method = "lm") +

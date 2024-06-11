@@ -226,10 +226,10 @@ ggplot() +
   facet_wrap(~ ACTIVITY_TYPE, ncol = 3, scales = "free_y") +
   scale_fill_manual(values = c("Gross Acres to Date" = "gray","Net Acres to Date" = "lightgray")) +
   scale_color_manual(values = c("Gross Acres within 5 Years" = "blue", "Net Acres within 5 Years" = "red", "5-yr Gross = 5-yr Net (~1 m^2)" = "green")) +
-  # theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
-  # guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
-  theme(legend.position = "none") +
-  guides(fill="none")
+  theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=12)) +
+  guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL,nrow=2))
+  # theme(legend.position = "none") +
+  # guides(fill="none")
 
 
 
@@ -341,12 +341,12 @@ gross_activities <-
 gross_activities_df = st_drop_geometry(gross_activities)
 net_activities_df = st_drop_geometry(net_activities)
 assigned_df = st_drop_geometry(assigned_activities)
-facts = st_drop_geometry(facts_fires$fires_activities)
+facts_df = st_drop_geometry(facts_fires$fires_activities)
 
 # drop units
 units(net_activities_df$net_area) <- NULL
 units(gross_activities_df$gross_area) <- NULL
-units(assigned_df$activity_fire_acres) <- NULL
+units(assigned_df$activity_area) <- NULL
 
 gross_net <- merge(gross_activities_df,net_activities_df,
   by=c("Event_ID", "ACTIVITY_TYPE","Ig_Year","diff_years"))
@@ -358,6 +358,7 @@ gross_net<-gross_net[!is.na(gross_net$ACTIVITY_TYPE),]
 gross_net<- group_by(gross_net,Ig_Year,diff_years,ACTIVITY_TYPE)|>summarize(
   gross_area=sum(gross_area),
   net_area = sum(net_area))
+
 # Plot difference
 
 ggplot(gross_net[gross_net$diff_years==5,], aes(x = Ig_Year)) +
@@ -417,11 +418,6 @@ total_by_fire = total_by_fire %>%
   mutate(diff = total_treated_gross - total_treated_net)
 
 
-
-
-
-
-
 acres_burned_by_fire = assigned_df %>%
   group_by(Ig_Year, Event_ID) %>%
   distinct(Event_ID, .keep_all = TRUE) %>%
@@ -429,6 +425,11 @@ acres_burned_by_fire = assigned_df %>%
 acres_burned_by_year = acres_burned_by_fire %>%
   group_by(Ig_Year) %>%
   summarize(acres_burned = sum(acres_burned, na.rm = TRUE))
+
+
+
+
+
 
 #### Summarize Treatment Area by Category ####
 

@@ -13,15 +13,12 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
 
 # Define Reforestation Treatment Categories and associated FACTS activities
 planting <- c("Plant Trees") 
-harvest_salvage <- c("Salvage Cut (intermediate treatment, not regeneration")
+harvest_salvage <- c("Salvage Cut (intermediate treatment, not regeneration)")
 harvest = c("Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
-prep <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
-          "Site Preparation for Planting - Chemical","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
-          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other", "Site Preparation for Natural Regeneration - Mechanical",
-          "Site Preparation for Natural Regeneration - Manual","Site Preparation for Natural Regeneration - Burning",
-          "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels") 
+prep <- c("Site Preparation for Planting - Chemical","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+          "Site Preparation for Planting - Burning","Site Preparation for Planting - Other")
 release <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
 thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
 replant <- c("Fill-in or Replant Trees") 
@@ -285,7 +282,11 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 }
 
 #### TODO: ####
+
 # Summarize severity
+
+
+
 
 #### Read in and prepare Fire and FACTS datasets ####
 
