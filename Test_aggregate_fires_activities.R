@@ -12,21 +12,22 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
           "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
 # Define Reforestation Treatment Categories and associated FACTS activities
-planting <- c("Plant Trees") 
+planting <- "Plant Trees"
 harvest_salvage <- c("Salvage Cut (intermediate treatment, not regeneration)")
 harvest = c("Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
-prep <- c("Site Preparation for Planting - Chemical","Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+prep <- c("Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
           "Site Preparation for Planting - Burning","Site Preparation for Planting - Other")
+prep_chem = "Site Preparation for Planting - Chemical"
 release <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
 thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
-replant <- c("Fill-in or Replant Trees") 
+replant <- "Fill-in or Replant Trees"
 prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
 fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
           "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
           "Broadcast Burning - Covers a majority of the unit") 
-cert_planted <- c("Certification-Planted")
+cert_planted <- "Certification-Planted"
 cert_tsi = c("TSI Certification - Release/weeding",
           "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
           "TSI Certification - Cleaning", "TSI Certification - Pruning") 
@@ -36,7 +37,7 @@ survey <- c("Silvicultural Stand Examination","Stocking Survey", "Plantation Sur
             "Pretreatment Exam for Reforestation")
 review = c("Activity Review","Photo Stand Delineation","Remote Sensing Vegetation Mapping","Stand Silviculture Prescription")
 need = c("Reforestation Need Created by Fire","Reforestation Need created by Regeneration Failure","Reforestation Need Change due to Stocking Changes")
-manage.except.plant <- c(harvest_salvage,harvest,prep,release,thin,replant,prune,fuel,survey,cert_planted,cert_tsi,review,need)
+manage.except.plant <- c(harvest_salvage,harvest,prep,prep_chem,release,thin,replant,prune,fuel,survey,cert_planted,cert_tsi,review,need)
 manage <- c(planting,manage.except.plant)
 
 
@@ -91,6 +92,7 @@ prepare_facts <- function(facts){
   
   # Check to determine feature is a valid polygon
   facts <- facts[st_is_valid(facts),]
+  facts = facts[st_make_valid(facts),]
   facts <- facts[st_dimension(facts)==2,]
   
   # Create an ID to track where polygons in activities go
@@ -99,7 +101,7 @@ prepare_facts <- function(facts){
 }
 
 # Function to self intersect fire polygons
-self_intersect <- function(polygons, precision=1000, area_threshold=0){
+self_intersect <- function(polygons, precision=100, area_threshold=0){
   
   polygons<-st_make_valid(polygons)
   polygons<- st_intersection(polygons)
@@ -290,6 +292,8 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 #### Read in and prepare Fire and FACTS datasets ####
 
+# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
+
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
@@ -300,7 +304,7 @@ fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 fires = fires %>%
   # mutate(Ig_Year = year(Ig_Date)) %>%
   filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year > 1993 & Ig_Year < 2019)
+  filter(Ig_Year > 1993 & Ig_Year < 2020)
 
 fires <- prepare_fires(fires,nfs_r5)
 
@@ -311,21 +315,21 @@ facts <- facts %>%
   filter(FISCAL_Y_2 > 1993)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(planting,harvest_salvage,harvest,prep,release,thin,
-                                     replant,prune,fuel,cert_planted,cert_tsi,review,need),]
+facts <- facts[facts$ACTIVITY %in% c(planting,harvest_salvage,harvest,prep,prep_chem,release,thin,
+                                     replant,prune,fuel,cert_planted,cert_tsi,survey,review,need),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
 facts <- prepare_facts(facts)
 
 #### Conduct intersection and assign activities ####
-facts_fires <- intersect_activities(facts,fires,precision=1000,10)
+facts_fires <- intersect_activities(facts,fires,precision=100,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
-saveRDS(facts_fires,"facts_fires_2022.RDS")
+saveRDS(facts_fires,"facts_fires_2024.RDS")
 
 
-facts_fires <- readRDS("facts_fires_2022.RDS")
+facts_fires <- readRDS("facts_fires_2024.RDS")
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 # CLEANING ASSIGNED ACTIVITIES
@@ -371,7 +375,7 @@ assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire
 
 
 # CREATE IS_* fields
-fields <- c("planting","harvest_salvage","harvest","prep","release","thin","replant","survey",
+fields <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant","survey",
             "prune","fuel","cert_planted","cert_tsi","review","need","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
@@ -380,7 +384,7 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE
-types <- c("planting","harvest_salvage","harvest","prep","release","thin","replant",
+types <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant",
            "prune","fuel","cert_planted","cert_tsi","survey","review","need")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
@@ -389,5 +393,5 @@ for(i in types){
   is_cat <- assigned_activities$ACTIVITY%in%categories
   assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
 } 
-saveRDS(assigned_activities,"assigned_activities_2022.RDS")
+saveRDS(assigned_activities,"assigned_activities_2024.RDS")
 

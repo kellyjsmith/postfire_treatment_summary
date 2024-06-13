@@ -1,6 +1,9 @@
 # SUMMARY TABLES BY CATEGORY ####
 
 
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+
+
 # Convert sf objects to dataframes
 gross_net_df = st_drop_geometry(gross_net_nyears)
 assigned_df = st_drop_geometry(assigned_activities)
@@ -9,7 +12,7 @@ facts_df = st_drop_geometry(facts_fires$fires_activities)
 
 
 # CREATE IS_* fields for FACTS
-fields <- c("planting","harvest_salvage","harvest","prep","release","thin","replant","survey",
+fields <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant","survey",
             "prune","fuel","cert_planted","cert_tsi","review","need","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
@@ -18,7 +21,7 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE for FACTS
-types <- c("planting","harvest_salvage","harvest","prep","release","thin","replant",
+types <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant",
            "prune","fuel","cert_planted","cert_tsi","survey","review","need")
 facts_df$ACTIVITY_TYPE<-NA
 for(i in types){
@@ -29,10 +32,7 @@ for(i in types){
 } 
 
 
-
 # Remove embedded units from values
-units(net_activities_df$net_area) <- NULL
-units(gross_activities_df$gross_area) <- NULL
 units(assigned_df$activity_fire_area) <- NULL
 units(facts_df$activity_area) <- NULL
 
@@ -46,16 +46,6 @@ facts_acreage <- facts_df %>%
 assigned_acreage <- assigned_df %>%
   group_by(ACTIVITY_TYPE) %>%
   summarise(assigned_activity_acres = sum(activity_fire_area/4046.86, na.rm = TRUE))
-
-# # Summarize activity_area by ACTIVITY_TYPE for net_activities_df
-# net_acreage <- net_activities_df %>%
-#   group_by(ACTIVITY_TYPE) %>%
-#   summarise(net_activity_acres = sum(net_area/4046.86, na.rm = TRUE))
-# 
-# # Summarize activity_area by ACTIVITY_TYPE for gross_activities_df
-# gross_acreage <- gross_activities_df %>%
-#   group_by(ACTIVITY_TYPE) %>%
-#   summarise(gross_activity_acres = sum(gross_area/4046.86, na.rm = TRUE))
 
 split_acreage_5years <- gross_net_df %>%
   filter(nyears==5) %>%
@@ -73,3 +63,4 @@ split_acreage_10years <- gross_net_df %>%
 combined_acreage_summary <- full_join(facts_acreage, assigned_acreage, by = "ACTIVITY_TYPE") %>%
   full_join(split_acreage_5years, by = "ACTIVITY_TYPE") %>%
   full_join(split_acreage_10years, by = "ACTIVITY_TYPE")
+write.csv(combined_acreage_summary, "combined_acreage_summary.csv")
