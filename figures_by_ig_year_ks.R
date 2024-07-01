@@ -263,6 +263,7 @@ gross_net_nyears <- map_dfr(rep(1:10),net_gross_nyears,assigned_activities=assig
 gross_net_nyears$net_area_ac <- as.numeric(gross_net_nyears$net_area)/4046.86
 gross_net_nyears$gross_area_ac <- as.numeric(gross_net_nyears$gross_area)/4046.86
 
+saveRDS(gross_net_nyears, "gross_net_nyears.RDS")
 
 theme_set(theme_grey())
 ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +

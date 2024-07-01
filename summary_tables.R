@@ -36,6 +36,14 @@ for(i in types){
 units(assigned_df$activity_fire_area) <- NULL
 units(facts_df$activity_area) <- NULL
 
+# Summarize total and postfire activity acres by all activities and types
+total_facts =  facts_df %>%
+  group_by(ACTIVITY_TYPE,ACTIVITY) %>%
+  summarize(total_facts_acres = sum(activity_area/4046.86, na.rm = TRUE))
+total_postfire <- assigned_df %>%
+  group_by(ACTIVITY_TYPE,ACTIVITY) %>%
+  summarise(total_postfire_acres = sum(activity_fire_area/4046.86, na.rm = TRUE))
+
 
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
 facts_acreage <- facts_df %>%
