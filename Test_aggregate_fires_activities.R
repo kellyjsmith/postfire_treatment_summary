@@ -326,6 +326,9 @@ facts <- prepare_facts(facts)
 facts_fires <- intersect_activities(facts,fires,precision=100,10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
+
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+
 saveRDS(facts_fires,"facts_fires_2024.RDS")
 
 
