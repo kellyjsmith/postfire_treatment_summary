@@ -12,32 +12,32 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
           "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
 # Define Reforestation Treatment Categories and associated FACTS activities
-planting <- "Plant Trees"
-harvest_salvage <- c("Salvage Cut (intermediate treatment, not regeneration)")
-harvest = c("Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
+Plant <- "Plant Trees"
+Harvest_Salvage <- c("Salvage Cut (intermediate treatment, not regeneration)")
+Harvest_NonSalv = c("Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
-prep <- c("Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
+SitePrep_NonChem <- c("Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
           "Site Preparation for Planting - Burning","Site Preparation for Planting - Other")
-prep_chem = "Site Preparation for Planting - Chemical"
-release <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
-thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
-replant <- "Fill-in or Replant Trees"
-prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
-fuel <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
+SitePrep_Chem = "Site Preparation for Planting - Chemical"
+TSI <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
+Thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
+Replant <- "Fill-in or Replant Trees"
+Prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
+Fuels <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
           "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
           "Broadcast Burning - Covers a majority of the unit") 
-cert_planted <- "Certification-Planted"
-cert_tsi = c("TSI Certification - Release/weeding",
+Certified_Planted <- "Certification-Planted"
+Certified_TSI = c("TSI Certification - Release/weeding",
           "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
           "TSI Certification - Cleaning", "TSI Certification - Pruning") 
-survey <- c("Silvicultural Stand Examination","Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
+Survey <- c("Silvicultural Stand Examination","Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
             "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared",
             "Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation",
             "Pretreatment Exam for Reforestation")
-review = c("Activity Review","Photo Stand Delineation","Remote Sensing Vegetation Mapping","Stand Silviculture Prescription")
-need = c("Reforestation Need Created by Fire","Reforestation Need created by Regeneration Failure","Reforestation Need Change due to Stocking Changes")
-manage.except.plant <- c(harvest_salvage,harvest,prep,prep_chem,release,thin,replant,prune,fuel,survey,cert_planted,cert_tsi,review,need)
+Review = c("Activity Review","Photo Stand Delineation","Remote Sensing Vegetation Mapping","Stand Silviculture Prescription")
+Need = c("Reforestation Need Created by Fire","Reforestation Need created by Regeneration Failure","Reforestation Need Change due to Stocking Changes")
+manage.except.plant <- c(Harvest_Salvage,Harvest_NonSalv,SitePrep_NonChem,SitePrep_Chem,TSI,Thin,Replant,Prune,Fuels,Survey,Certified_Planted,Certified_TSI,Review,Need)
 manage <- c(planting,manage.except.plant)
 
 
@@ -315,8 +315,8 @@ facts <- facts %>%
   filter(FISCAL_Y_2 > 1993)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(planting,harvest_salvage,harvest,prep,prep_chem,release,thin,
-                                     replant,prune,fuel,cert_planted,cert_tsi,survey,review,need),]
+facts <- facts[facts$ACTIVITY %in% c(Harvest_Salvage,Harvest_NonSalv,SitePrep_NonChem,SitePrep_Chem,TSI,Thin,
+                                     Replant,Prune,Fuels,Survey,Certified_Planted,Certified_TSI,Review,Need),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
@@ -387,8 +387,8 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE
-types <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant",
-           "prune","fuel","cert_planted","cert_tsi","survey","review","need")
+types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant",
+           "Prune","Fuels","Survey","Certified_Planted","Certified_TSI","Review","Need")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
