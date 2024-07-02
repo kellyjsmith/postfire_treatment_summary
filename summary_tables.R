@@ -9,7 +9,7 @@ gross_net_df = st_drop_geometry(gross_net_nyears)
 assigned_df = st_drop_geometry(assigned_activities)
 facts_df = st_drop_geometry(facts_fires$fires_activities)
 
-
+# test
 
 # CREATE IS_* fields for FACTS
 fields <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant","survey",
