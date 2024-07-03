@@ -5,6 +5,9 @@ library("dplyr")
 library("terra")
 library("tidyverse")
 library("units")
+library("data.table")
+library("future")
+library("furrr")
 
 setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
 
@@ -241,14 +244,14 @@ ggplot() +
 
 net_gross_nyears <- function(nyears,assigned_activities){
   
-  filtered <- assigned_activities |>
+  filtered <- assigned_activities %>%
     filter(diff_years<=nyears)
   
   if (dim(filtered)[1] == 0) {
     return(NULL)
   } else{
     filtered$gross_area <- st_area(filtered)
-    result <- filtered |> group_by(Ig_Year, ACTIVITY_TYPE) |>
+    result <- filtered %>% group_by(Ig_Year, ACTIVITY_TYPE) %>%
       summarize(
         geometry = st_union(geometry),
         gross_area = sum(gross_area)
@@ -259,6 +262,44 @@ net_gross_nyears <- function(nyears,assigned_activities){
   }
 }
 gross_net_nyears <- map_dfr(rep(1:10),net_gross_nyears,assigned_activities=assigned_activities)
+
+
+# net_gross_nyears2 <- function(nyears, assigned_activities) {
+#   # Convert to data.table
+#   dt <- as.data.table(assigned_activities)
+#   
+#   # Filter
+#   filtered <- dt[diff_years <= nyears]
+#   
+#   if (nrow(filtered) == 0) {
+#     return(NULL)
+#   } else {
+#     # Calculate gross area
+#     filtered[, gross_area := st_area(geometry)]
+#     
+#     # Group and summarize
+#     result <- filtered[, .(
+#       geometry = st_union(geometry),
+#       gross_area = sum(gross_area)
+#     ), by = .(Ig_Year, ACTIVITY_TYPE)]
+#     
+#     # Calculate net area
+#     result[, net_area := st_area(geometry)]
+#     result[, nyears := nyears]
+#     
+#     return(result)
+#   }
+# }
+# 
+# # Set up parallel backend
+# plan(multisession, workers = 4)  # Adjust the number of workers as needed
+# 
+# gross_net_nyears2 <- future_map_dfr(
+#   1:10,
+#   ~net_gross_nyears2(nyears = .x, assigned_activities = assigned_activities),
+#   .options = furrr_options(seed = TRUE)
+# )
+
 
 gross_net_nyears$net_area_ac <- as.numeric(gross_net_nyears$net_area)/4046.86
 gross_net_nyears$gross_area_ac <- as.numeric(gross_net_nyears$gross_area)/4046.86

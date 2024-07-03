@@ -43,6 +43,7 @@ total_postfire <- assigned_df %>%
   group_by(ACTIVITY_TYPE,ACTIVITY) %>%
   summarise(total_postfire_acres = sum(activity_fire_area/4046.86, na.rm = TRUE))
 total_summary = full_join(total_facts,total_postfire,by="ACTIVITY")
+write.csv(total_summary,"acreage_summary_all_activities.csv")
 
 
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
