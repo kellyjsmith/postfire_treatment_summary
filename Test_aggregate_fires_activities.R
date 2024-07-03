@@ -14,9 +14,9 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
 # Define Reforestation Treatment Categories and associated FACTS activities
 Plant <- "Plant Trees"
 Harvest_Salvage <- c("Salvage Cut (intermediate treatment, not regeneration)")
-Harvest_NonSalv = c("Stand Clearcut (EA/RH/FH)","Patch Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
+Harvest_NonSalv = c("Stand Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
            "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
-           "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)","Shelterwood Removal Cut (EA/NRH/FH)") 
+           "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)")
 SitePrep_NonChem <- c("Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
           "Site Preparation for Planting - Burning","Site Preparation for Planting - Other")
 SitePrep_Chem = "Site Preparation for Planting - Chemical"
@@ -30,15 +30,20 @@ Fuels <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yardi
 Certified_Planted <- "Certification-Planted"
 Certified_TSI = c("TSI Certification - Release/weeding",
           "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
-          "TSI Certification - Cleaning", "TSI Certification - Pruning") 
-Survey <- c("Silvicultural Stand Examination","Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
+          "TSI Certification - Cleaning", "TSI Certification - Pruning")
+Stand_Exam = "Silvicultural Stand Examination"
+Survey <- c("Stocking Survey", "Plantation Survival Survey", "Vegetative Competition Survey",
             "Post Treatment Vegetation Monitoring", "Low Intensity Stand Examination", "Stand Diagnosis Prepared",
             "Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation",
             "Pretreatment Exam for Reforestation")
-Review = c("Activity Review","Photo Stand Delineation","Remote Sensing Vegetation Mapping","Stand Silviculture Prescription")
-Need = c("Reforestation Need Created by Fire","Reforestation Need created by Regeneration Failure","Reforestation Need Change due to Stocking Changes")
-manage.except.plant <- c(Harvest_Salvage,Harvest_NonSalv,SitePrep_NonChem,SitePrep_Chem,TSI,Thin,Replant,Prune,Fuels,Survey,Certified_Planted,Certified_TSI,Review,Need)
-manage <- c(planting,manage.except.plant)
+Mapping = "Remote Sensing Vegetation Mapping"
+Prescription = "Stand Silviculture Prescription"
+Need_by_Fire = "Reforestation Need Created by Fire"
+Need_by_Failure = "Reforestation Need created by Regeneration Failure"
+
+manage.except.plant <- c(Harvest_Salvage,Harvest_NonSalv,SitePrep_NonChem,SitePrep_Chem,TSI,Thin,Replant,Prune,Fuels,
+                         Certified_Planted,Certified_TSI,Stand_Exam,Survey,Mapping,Prescription,Need_by_Fire,Need_by_Failure)
+manage <- c(Plant,manage.except.plant)
 
 
 # Function to prepare fire layer
@@ -292,7 +297,7 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 #### Read in and prepare Fire and FACTS datasets ####
 
-# setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
+setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/thesis_working/postfire_treatment_summary")
 
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 fires <- st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
@@ -315,8 +320,8 @@ facts <- facts %>%
   filter(FISCAL_Y_2 > 1993)
 
 # Keep only reforestation-related activities and important fields
-facts <- facts[facts$ACTIVITY %in% c(Harvest_Salvage,Harvest_NonSalv,SitePrep_NonChem,SitePrep_Chem,TSI,Thin,
-                                     Replant,Prune,Fuels,Survey,Certified_Planted,Certified_TSI,Review,Need),]
+facts <- facts[facts$ACTIVITY %in% c(Harvest_Salvage,Harvest_NonSalv,SitePrep_NonChem,SitePrep_Chem,TSI,Thin,Replant,Prune,Fuels,
+                                     Certified_Planted,Certified_TSI,Stand_Exam,Survey,Mapping,Prescription,Need_by_Fire,Need_by_Failure),]
 facts <- facts[,keep]
 
 # Run function to prepare dataset
@@ -378,8 +383,8 @@ assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire
 
 
 # CREATE IS_* fields
-fields <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant","survey",
-            "prune","fuel","cert_planted","cert_tsi","review","need","manage.except.plant","manage")
+fields <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
+            "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- assigned_activities$ACTIVITY%in%categories
@@ -387,8 +392,8 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE
-types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant",
-           "Prune","Fuels","Survey","Certified_Planted","Certified_TSI","Review","Need")
+types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
+           "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)

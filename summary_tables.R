@@ -9,11 +9,10 @@ gross_net_df = st_drop_geometry(gross_net_nyears)
 assigned_df = st_drop_geometry(assigned_activities)
 facts_df = st_drop_geometry(facts_fires$fires_activities)
 
-# test
 
 # CREATE IS_* fields for FACTS
-fields <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant","survey",
-            "prune","fuel","cert_planted","cert_tsi","review","need","manage.except.plant","manage")
+fields <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
+            "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- facts_df$ACTIVITY%in%categories
@@ -21,8 +20,8 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE for FACTS
-types <- c("planting","harvest_salvage","harvest","prep","prep_chem","release","thin","replant",
-           "prune","fuel","cert_planted","cert_tsi","survey","review","need")
+types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
+           "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure")
 facts_df$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
@@ -43,6 +42,7 @@ total_facts =  facts_df %>%
 total_postfire <- assigned_df %>%
   group_by(ACTIVITY_TYPE,ACTIVITY) %>%
   summarise(total_postfire_acres = sum(activity_fire_area/4046.86, na.rm = TRUE))
+total_summary = full_join(total_facts,total_postfire,by="ACTIVITY")
 
 
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
