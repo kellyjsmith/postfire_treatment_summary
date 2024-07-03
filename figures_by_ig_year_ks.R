@@ -47,7 +47,7 @@ gross_net_time <- map2_dfr(rep(1994,30),c(1994:2023),
                            net_gross_start_end,assigned_activities=assigned_activities)
 
 planting_prop = gross_net_time %>%
-  filter(ACTIVITY_TYPE %in% c("planting","cert")) %>%
+  filter(ACTIVITY_TYPE %in% c("Plant","Cert_Planted")) %>%
   pivot_wider(id_cols = c("start", "end"),
               names_from = "ACTIVITY_TYPE",
               values_from = "net_area")
@@ -78,6 +78,9 @@ gross_net_time_5years <- map2_dfr(rep(1994,25),c(1994:2018),
 # Cumulative area since 1994, only activities within 5 years of ignition
 gross_net_time_5years$net_area_ac <- as.numeric(gross_net_time_5years$net_area)/4046.86
 gross_net_time_5years$gross_area_ac <- as.numeric(gross_net_time_5years$gross_area)/4046.86
+
+# use jpeg function
+jpeg(filename = "figure1.jpg")
 ggplot(gross_net_time_5years, aes(x = end)) +
   geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
   geom_line(aes(y = net_area_ac, color = "Net Acres")) +
@@ -91,7 +94,7 @@ ggplot(gross_net_time_5years, aes(x = end)) +
     legend.position = "bottom",
     legend.box = "horizontal",
   )
-
+dev.off()
 
 # Filter the data frames for category groupings
 filter1 = c("planting")
@@ -261,55 +264,40 @@ net_gross_nyears <- function(nyears,assigned_activities){
     return(result)
   }
 }
-gross_net_nyears <- map_dfr(rep(1:10),net_gross_nyears,assigned_activities=assigned_activities)
+gross_net_nyears <- map_dfr(rep(1:15),net_gross_nyears,assigned_activities=assigned_activities)
 
 
-# net_gross_nyears2 <- function(nyears, assigned_activities) {
-#   # Convert to data.table
-#   dt <- as.data.table(assigned_activities)
-#   
-#   # Filter
-#   filtered <- dt[diff_years <= nyears]
-#   
-#   if (nrow(filtered) == 0) {
-#     return(NULL)
-#   } else {
-#     # Calculate gross area
-#     filtered[, gross_area := st_area(geometry)]
-#     
-#     # Group and summarize
-#     result <- filtered[, .(
-#       geometry = st_union(geometry),
-#       gross_area = sum(gross_area)
-#     ), by = .(Ig_Year, ACTIVITY_TYPE)]
-#     
-#     # Calculate net area
-#     result[, net_area := st_area(geometry)]
-#     result[, nyears := nyears]
-#     
-#     return(result)
-#   }
-# }
-# 
-# # Set up parallel backend
-# plan(multisession, workers = 4)  # Adjust the number of workers as needed
-# 
-# gross_net_nyears2 <- future_map_dfr(
-#   1:10,
-#   ~net_gross_nyears2(nyears = .x, assigned_activities = assigned_activities),
-#   .options = furrr_options(seed = TRUE)
-# )
+net_gross_activity <- function(nyears,assigned_activities){
+  
+  filtered <- assigned_activities %>%
+    filter(diff_years<=nyears)
+  
+  if (dim(filtered)[1] == 0) {
+    return(NULL)
+  } else{
+    filtered$gross_area <- st_area(filtered)
+    result <- filtered %>% group_by(Ig_Year, ACTIVITY) %>%
+      summarize(
+        geometry = st_union(geometry),
+        gross_area = sum(gross_area)
+      )
+    result$net_area <- st_area(result)
+    result$nyears <- nyears
+    return(result)
+  }
+}
+gross_net_15years <- map_dfr(rep(1:15),net_gross_activity,assigned_activities=assigned_activities)
 
 
-gross_net_nyears$net_area_ac <- as.numeric(gross_net_nyears$net_area)/4046.86
-gross_net_nyears$gross_area_ac <- as.numeric(gross_net_nyears$gross_area)/4046.86
+gross_net_15years$net_area_ac <- as.numeric(gross_net_15years$net_area)/4046.86
+gross_net_15years$gross_area_ac <- as.numeric(gross_net_15years$gross_area)/4046.86
 
 saveRDS(gross_net_nyears, "gross_net_nyears.RDS")
 
-theme_set(theme_grey())
+
 ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_area_ac, color = "Gross Acres", size = .5)) +
-  geom_line(aes(y = net_area_ac, color = "Net Acres", size = .5)) +
+  geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
+  geom_line(aes(y = net_area_ac, color = "Net Acres")) +
   ggtitle( "R5 Postfire Acres Treated within 5 Years of Ignition") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
   scale_x_continuous(breaks = seq(1992, 2020, 6)) +
@@ -318,7 +306,7 @@ ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +
   theme(
     legend.position = "bottom",
     legend.box = "horizontal",
-    line = element_line(linewidth = .5),
+    # line = element_line(linewidth = .5),
   )
 
 
