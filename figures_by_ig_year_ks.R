@@ -14,7 +14,8 @@ setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
 assigned_activities = readRDS("assigned_activities_2024.RDS")
 facts_fires = readRDS("facts_fires_2024.RDS")
 
-
+# Summarize cumulative net and gross area for each combo
+# of fire and activity type for a given timespan
 net_gross_start_end <- function(start,end,assigned_activities){
   
   filtered <- assigned_activities |>
@@ -37,24 +38,33 @@ net_gross_start_end <- function(start,end,assigned_activities){
         gross_area = sum(gross_area)
       )
     result$start <- start
-    result$end <-end
+    result$end <- end
     
     return(result)
   }
 }
 
+# Map to function, cumulative area since 1994
 gross_net_time <- map2_dfr(rep(1994,30),c(1994:2023),
                            net_gross_start_end,assigned_activities=assigned_activities)
 
-planting_prop = gross_net_time %>%
-  filter(ACTIVITY_TYPE %in% c("Plant","Cert_Planted")) %>%
-  pivot_wider(id_cols = c("start", "end"),
-              names_from = "ACTIVITY_TYPE",
-              values_from = "net_area")
-
-# Cumulative area since start
 gross_net_time$net_area_ac <- as.numeric(gross_net_time$net_area)/4046.86
 gross_net_time$gross_area_ac <- as.numeric(gross_net_time$gross_area)/4046.86
+saveRDS(gross_net_time, "gross_net_time.RDS")
+
+# Cumulative area since 1994, only activities within 5 years of ignition
+gross_net_time_5years <- map2_dfr(rep(1994,25),c(1994:2018),
+                                  net_gross_start_end,
+                                  assigned_activities=assigned_activities[assigned_activities$diff_years<=5,])
+
+gross_net_time_5years$net_area_ac <- as.numeric(gross_net_time_5years$net_area)/4046.86
+gross_net_time_5years$gross_area_ac <- as.numeric(gross_net_time_5years$gross_area)/4046.86
+saveRDS(gross_net_time_5years, "gross_net_time_5years.RDS")
+
+gross_net_time = readRDS("gross_net_time.RDS")
+gross_net_time_5years = readRDS("gross_net_time_5years")
+
+# Cumulative area since start
 ggplot(gross_net_time, aes(x = end)) +
   geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
   geom_line(aes(y = net_area_ac, color = "Net Acres")) +
@@ -69,15 +79,6 @@ ggplot(gross_net_time, aes(x = end)) +
     legend.box = "horizontal",
   )
 
-
-
-gross_net_time_5years <- map2_dfr(rep(1994,25),c(1994:2018),
-                           net_gross_start_end,
-                           assigned_activities=assigned_activities[assigned_activities$diff_years<=5,])
-
-# Cumulative area since 1994, only activities within 5 years of ignition
-gross_net_time_5years$net_area_ac <- as.numeric(gross_net_time_5years$net_area)/4046.86
-gross_net_time_5years$gross_area_ac <- as.numeric(gross_net_time_5years$gross_area)/4046.86
 
 # use jpeg function
 jpeg(filename = "figure1.jpg")
@@ -221,8 +222,6 @@ ggplot() +
   theme(legend.position = "none") +
   guides(fill="none")
 
-
-
 # gridExtra::grid.arrange(c1, c2, c3, c4, c5, ncol = 1)
 
 ggplot() +
@@ -306,13 +305,12 @@ ggplot(gross_net_nyears[gross_net_nyears$nyears==5,], aes(x = Ig_Year)) +
   theme(
     legend.position = "bottom",
     legend.box = "horizontal",
-    # line = element_line(linewidth = .5),
   )
 
 
 ggplot(gross_net_nyears[gross_net_nyears$nyears==10,], aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_area_ac, color = "Gross Acres", size = 1.25)) +
-  geom_line(aes(y = net_area_ac, color = "Net Acres", size = 1.25)) +
+  geom_line(aes(y = gross_area_ac, color = "Gross Acres")) +
+  geom_line(aes(y = net_area_ac, color = "Net Acres")) +
   ggtitle( "R5 Postfire Acres Treated within 10 Years of Ignition") +
   labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
   scale_x_continuous(breaks = seq(1992, 2020, 6)) +
@@ -386,64 +384,6 @@ facts_df = st_drop_geometry(facts_fires$fires_activities)
 units(net_activities_df$net_area) <- NULL
 units(gross_activities_df$gross_area) <- NULL
 units(assigned_df$activity_area) <- NULL
-
-gross_net <- merge(gross_activities_df,net_activities_df,
-  by=c("Event_ID", "ACTIVITY_TYPE","Ig_Year","diff_years"))
-gross_net <- merge(gross_net,comb_fire_diff,by.x=c("Ig_Year","diff_years"),
-                   by.y=c("fire_year","diff_years"),all.y=TRUE)
-gross_net$gross_area<-ifelse(is.na(gross_net$gross_area),0,gross_net$gross_area)
-gross_net$net_area<-ifelse(is.na(gross_net$net_area),0,gross_net$net_area)
-gross_net<-gross_net[!is.na(gross_net$ACTIVITY_TYPE),]
-gross_net<- group_by(gross_net,Ig_Year,diff_years,ACTIVITY_TYPE)|>summarize(
-  gross_area=sum(gross_area),
-  net_area = sum(net_area))
-
-# Plot difference
-
-ggplot(gross_net[gross_net$diff_years==5,], aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_area, color = "Gross Acres")) +
-  geom_line(aes(y = net_area, color = "Net Acres")) +
-  ggtitle("Acres Treated in R5 within 5 Years of Fire") +
-  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
-  facet_wrap(~ ACTIVITY_TYPE, ncol = 3) +
-  # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
-  theme_bw() +
-  theme(
-    legend.position = "bottom",
-    legend.box = "horizontal",
-  )
-
-
-ggplot(gross_net[gross_net$diff_years==10,], aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_area, color = "Gross Acres")) +
-  geom_line(aes(y = net_area, color = "Net Acres")) +
-  ggtitle("Acres Treated in R5 within 10 Years of Fire") +
-  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
-  facet_wrap(~ ACTIVITY_TYPE, ncol = 3) +
-  # facet_wrap(~ ACTIVITY_TYPE, ncol = 3,scales="free_y") +
-  theme_bw() +
-  theme(
-    legend.position = "bottom",
-    legend.box = "horizontal",
-  )
-
-
-# Plot difference
-net5<-  ggplot(gross_net[gross_net$diff_years==5,], aes(x = Ig_Year)) +
-  geom_line(aes(y = gross_area, color = "Gross Acres")) +
-  geom_line(aes(y = net_area, color = "Net Acres")) +
-  ggtitle("Acres Treated in R5 within 5 Years of Fire") +
-  labs(x = "Ignition Year", y = "Treatment Acres", color = "Type of Acres") +
-  scale_x_continuous(breaks = seq(1992, 2020, 6)) +
-  facet_wrap(~ ACTIVITY_TYPE, ncol = 3) +
-  theme_bw() +
-  theme(
-    legend.position = "bottom",
-    legend.box = "horizontal",
-  )
-
 
 
 gross_by_fire = gross_activities_df %>%
@@ -551,14 +491,6 @@ ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
   facet_wrap(~ ACTIVITY_TYPE) +
   theme_classic()
 
-# # Assuming df is your data frame and it has two y variables y1 and y2
-# df$color <- ifelse(df$y1 == df$y2, "equal", "not equal")
-# 
-# ggplot(df, aes(x=x)) +
-#   geom_line(aes(y=y1, color=color)) +
-#   geom_line(aes(y=y2, color=color)) +
-#   scale_color_manual(values=c("equal"="red", "not equal"="black"))
-
 
 ggplot(combined_5yr_ig_year_filter1, aes(x = Ig_Year)) +
   geom_line(aes(y = gross_acres_5yr, color = "Gross Acres")) +
@@ -602,6 +534,7 @@ net_planting_by_igyear = net_activities_df %>%
 net_plant_cert_fire = full_join(net_planting_by_igyear, net_cert_by_igyear, by = "Ig_Year") %>%
   full_join(acres_burned_by_year, by = "Ig_Year")
 net_plant_cert_fire = rename(net_plant_cert_fire, "planting_acres" = net_acres.x, "cert_acres" = net_acres.y)
+
 # Convert the data frames from wide to long format
 net_plant_cert_fire = tidyr::gather(net_plant_cert_fire, type, net_acres, -Ig_Year)
   

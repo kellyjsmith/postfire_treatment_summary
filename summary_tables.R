@@ -3,6 +3,10 @@
 
 setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
 
+assigned_activities = readRDS("assigned_activities_2024.RDS")
+facts_fires = readRDS("facts_fires_2024.RDS")
+gross_net_nyears = readRDS("gross_net_nyears.RDS")
+
 
 # Convert sf objects to dataframes
 gross_net_df = st_drop_geometry(gross_net_nyears)
@@ -73,3 +77,12 @@ combined_acreage_summary <- full_join(facts_acreage, assigned_acreage, by = "ACT
   full_join(split_acreage_5years, by = "ACTIVITY_TYPE") %>%
   full_join(split_acreage_10years, by = "ACTIVITY_TYPE")
 write.csv(combined_acreage_summary, "combined_acreage_summary.csv")
+
+
+# Certification summaries
+plant_cert_prop = gross_net_time %>%
+  filter(ACTIVITY_TYPE %in% c("Plant","Cert_Planted")) %>%
+  pivot_wider(id_cols = c("start", "end"),
+              names_from = "ACTIVITY_TYPE",
+              values_from = "net_area")
+
