@@ -59,9 +59,7 @@ gross_net_cumulative_5years <- map2_dfr(rep(1994,25),c(1994:2018),
 
 gross_net_cumulative_5years$net_area_ac <- as.numeric(gross_net_cumulative_5years$net_area)/4046.86
 gross_net_cumulative_5years$gross_area_ac <- as.numeric(gross_net_cumulative_5years$gross_area)/4046.86
-saveRDS(gross_net_cumulative_5years, "gross_net_time_5years.RDS")
-
-gross_net_cumulative_5years = readRDS("gross_net_cumulative_5years.RDS")
+saveRDS(gross_net_cumulative_5years, "gross_net_cumulative_5years.RDS")
 
 
 #### Summarize the net and gross area completed for each ignition year ####

@@ -372,7 +372,7 @@ assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire
 
 
 # CREATE IS_* fields
-fields <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
+fields <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Plant","Replant","Prune","Fuels",
             "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure","manage.except.plant","manage")
 for(i in fields){
   categories <- eval(parse(text=i))
@@ -381,7 +381,7 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE
-types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
+types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Plant","Replant","Prune","Fuels",
            "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure")
 assigned_activities$ACTIVITY_TYPE<-NA
 for(i in types){
