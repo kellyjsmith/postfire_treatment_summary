@@ -3,7 +3,7 @@
 library(tidyverse)
 library(sf)
 
-setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
 # Cumulative area since start
 gross_net_cumulative = readRDS("gross_net_cumulative.RDS")

@@ -15,8 +15,7 @@ facts_df = st_drop_geometry(facts_fires$fires_activities)
 
 
 # CREATE IS_* fields for FACTS
-fields <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
-            "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure","manage.except.plant","manage")
+fields <- c(types,"treat","manage","monitor")
 for(i in fields){
   categories <- eval(parse(text=i))
   is_cat <- facts_df$ACTIVITY%in%categories
@@ -24,8 +23,7 @@ for(i in fields){
 } 
 
 # CREATE ACTIVITY TYPE for FACTS
-types <- c("Harvest_Salvage","Harvest_NonSalv","SitePrep_NonChem","SitePrep_Chem","TSI","Thin","Replant","Prune","Fuels",
-           "Certified_Planted","Certified_TSI","Stand_Exam","Survey","Mapping","Prescription","Need_by_Fire","Need_by_Failure")
+types <- types
 facts_df$ACTIVITY_TYPE<-NA
 for(i in types){
   print(i)
