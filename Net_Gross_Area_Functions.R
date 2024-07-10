@@ -9,7 +9,7 @@ library("data.table")
 library("future")
 library("furrr")
 
-setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
 assigned_activities = readRDS("assigned_activities_2024.RDS")
 facts_fires = readRDS("facts_fires_2024.RDS")

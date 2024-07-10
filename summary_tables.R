@@ -84,3 +84,17 @@ plant_cert_prop = gross_net_time %>%
               names_from = "ACTIVITY_TYPE",
               values_from = "net_area")
 
+
+plant_only = assigned_df %>%
+  filter(ACTIVITY_TYPE == "Plant")
+plant_cert_only = assigned_df %>%
+  filter(ACTIVITY_TYPE == "Certified_Planted")
+plant_cert_merge_allcert = merge(plant_only_total,plantcert_only_total,
+                             by = "SUID",
+                             all.x = FALSE, all.y = TRUE)
+plant_cert_merge_allplant = merge(plant_only_total,plantcert_only_total,
+                                 by = "SUID",
+                                 all.x = TRUE)
+not_certified = plant_cert_merge_allplant %>%
+  filter(ACTIVITY.y = NA)
+
