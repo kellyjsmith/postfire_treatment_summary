@@ -12,7 +12,7 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
           "ACTIVITY_C","ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
           "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
 
-# Define Reforestation Treatment Categories and other FACTS activities ####
+# Define reforestation management categories ####
 Certified_Planted <- "Certification-Planted"
 Certified_TSI = c("TSI Certification - Release/weeding",
                   "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
@@ -58,7 +58,7 @@ manage.except.plant = manage[manage != Plant]
 prepare_fires <- function(fires, nfs_r5){
   
   # Add YearName ID, filter for years, check polygon validity, add geometric attributes
-  # fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019)
+  # fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019) # this filtering is being done before the function is applied
   fires <- fires[st_is_valid(fires),]
   fires = fires[st_make_valid(fires),]
   fires <- fires[st_dimension(fires)==2,] 
@@ -289,17 +289,16 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 
 
-#### Prepare Fire and FACTS datasets ####
+#### Read and prepare Fire and FACTS datasets ####
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
 
-
 nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires <- st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 # fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
 # fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
-# fires <- st_read(dsn = "../../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
+# fires <- st_read(dsn = "../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
 
 fires = fires %>%
   # mutate(Ig_Year = year(Ig_Date)) %>%
@@ -309,7 +308,6 @@ fires = fires %>%
 fires <- prepare_fires(fires,nfs_r5)
 
 facts <- st_read("../Data/facts_r5.shp")
-facts <- st_read("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Git/Data/facts_r5.shp")
 
 # Filter out activities completed before study period
 facts <- facts %>%

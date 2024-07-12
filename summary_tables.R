@@ -1,7 +1,10 @@
 # SUMMARY TABLES BY CATEGORY ####
 
+library(dplyr)
+library(sf)
+library(tidyverse)
 
-setwd("C:/Users/smithke3/OneDrive - Oregon State University/Kelly/Output")
+setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
 assigned_activities = readRDS("assigned_activities_2024.RDS")
 facts_fires = readRDS("facts_fires_2024.RDS")
@@ -77,6 +80,9 @@ combined_acreage_summary <- full_join(facts_acreage, assigned_acreage, by = "ACT
 write.csv(combined_acreage_summary, "combined_acreage_summary.csv")
 
 
+
+
+
 # Certification summaries
 plant_cert_prop = gross_net_time %>%
   filter(ACTIVITY_TYPE %in% c("Plant","Cert_Planted")) %>%
@@ -89,12 +95,47 @@ plant_only = assigned_df %>%
   filter(ACTIVITY_TYPE == "Plant")
 plant_cert_only = assigned_df %>%
   filter(ACTIVITY_TYPE == "Certified_Planted")
-plant_cert_merge_allcert = merge(plant_only_total,plantcert_only_total,
+plant_cert_merge_allcert = merge(plant_only,plant_cert_only,
                              by = "SUID",
                              all.x = FALSE, all.y = TRUE)
-plant_cert_merge_allplant = merge(plant_only_total,plantcert_only_total,
+plant_cert_merge_allplant = merge(plant_only,plant_cert_only,
                                  by = "SUID",
-                                 all.x = TRUE)
+                                 all.x = TRUE, all.y = FALSE)
 not_certified = plant_cert_merge_allplant %>%
   filter(ACTIVITY.y = NA)
+
+
+analyze_certification <- function(data) {{
+  
+  #Split data frame
+  plant = data %>% filter(ACTIVITY_TYPE == "Plant")
+  certified = data %>% filter(ACTIVITY_TYPE == "Certified_Planted")
+  
+  joined <- st_join(plant, certified, join = st_intersects, suffix = c("_plant", "_cert"))
+  
+  result <- joined %>%
+    group_by(Ig_Year_plant,Event_ID_plant) %>%
+        summarise(
+          total_planted_acres = sum(activity_area_plant/4046.86),
+          certified_acres = sum(!is.na(SUID_cert), activity_area_cert/4046.86),
+          prop_certified = certified_acres / total_planted_acres,
+        )
+    }
+  
+  # Visualization
+  plot <- ggplot(result, aes(x = "", y = prop_certified, fill = "Certified")) +
+    geom_bar(stat = "identity", width = 1) +
+    geom_bar(aes(y = prop_not_certified, fill = "Not Certified"), stat = "identity", width = 1) +
+    coord_polar("y", start = 0) +
+    theme_void() +
+    scale_fill_manual(values = c("Certified" = "green", "Not Certified" = "red")) +
+    labs(title = "Proportion of Certified Plantings")
+  
+  list(result = result, plot = plot)
+}
+
+# Usage
+results <- analyze_certification(assigned_activities)
+print(results$result)
+print(results$plot)
 
