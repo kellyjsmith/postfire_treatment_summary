@@ -168,10 +168,8 @@ combined_net_gross_activities <- function(assigned_activities) {
                  group_by(Event_ID, type_labels) |>
                  summarize(
                    gross_acres = sum(st_area(geometry)/4046.86),
-                   fire = Incid_Name,
                    Ig_Year = x,
                    diff_years = y,
-                   facts_year = x + y
                  )
                
                # Calculate net area
@@ -180,17 +178,15 @@ combined_net_gross_activities <- function(assigned_activities) {
                  summarize(
                    geometry = st_union(geometry),
                    n_dissolved = n(),
-                   fire = Incid_Name,
                    Ig_Year = x,
                    diff_years = y,
-                   facts_year = x + y
                  )
                net_result$net_acres <- st_area(net_result$geometry)/4046.86
                
                # Combine results
                combined_result <- left_join(gross_result, 
                                             net_result |> select(-geometry), 
-                                            by = c("Event_ID", "type_labels", "Ig_Year", "diff_years", "facts_year"))
+                                            by = c("Event_ID", "type_labels", "Ig_Year", "diff_years"))
                
                combined_result$ref_year <- combined_result$Ig_Year + combined_result$diff_years
                
@@ -210,24 +206,20 @@ saveRDS(result, "combined_net_gross_activities.RDS")
 
 gross_net_summarize_by_year <- function(assigned_activities) {
   assigned_activities %>%
-    # Add facts_year column
-    mutate(facts_year = Ig_Year + diff_years) %>%
-    # Group by all relevant columns
-    group_by(Event_ID, type_labels, Incid_Name, Ig_Year, facts_year) %>%
-    # Summarize in one step
+    # Create unique fire yearname
+    unite("vb_id", Ig_Year:Incid_Name, sep = "_") %>%
+    # Group and summarize
+    group_by(vb_id, Incid_Name, Ig_Year, type_labels, year) %>%
     summarize(
       gross_acres = sum(st_area(geometry)) / 4046.86,
       net_acres = st_area(st_union(geometry)) / 4046.86,
       n_dissolved = n(),
+      diff_years = year - assigned_ig_year,
       .groups = "drop"
-    ) %>%
-    # Calculate diff_years after summarization
-    mutate(diff_years = facts_year - Ig_Year) %>%
-    # Rename columns for clarity
-    rename(fire = Incid_Name)
+    )
 }
 
 # Usage
-gross_net_summary <- gross_net_summarize_by_year(assigned_activities)
+gross_net_summary1 <- gross_net_summarize_by_year(assigned_activities)
 
 

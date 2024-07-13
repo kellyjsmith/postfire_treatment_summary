@@ -245,8 +245,6 @@ assign_activities <- function(fires_activities, fires){
     
     if(nrow(fires_i)==1){
       fires_activities[i,"assigned_fire"]<-fires_i$Event_ID
-      fires_activities[i,"assigned_fire_name"]<-fires_i$Incid_Name
-      fires_activities[i,"assigned_ig_year"]<-fires_i$Ig_Year
       fires_activities[i,"flag"]<-1
     }else{
       fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
@@ -254,8 +252,6 @@ assign_activities <- function(fires_activities, fires){
       fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
       fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
       fires_activities[i,"assigned_fire"]<-fires_i$Event_ID[1]
-      fires_activities[i,"assigned_fire_name"]<-fires_i$Incid_Name[1]
-      fires_activities[i,"assigned_ig_year"]<-fires_i$Ig_Year[1]
     }
     
   }
@@ -348,7 +344,7 @@ assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by.x="a
 colnames(assigned_activities)[which(colnames(assigned_activities)=="assigned_fire")]<-"Event_ID"
 
 # CREATING difference between activity and fire year
-assigned_activities$diff_years <- assigned_activities$year- assigned_activities$assigned_ig_year
+assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
 
 # CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
@@ -402,6 +398,11 @@ for(i in types){
 
 
 
+#### Create plant year field ####
+
+# Function to link each non-plant management activity the most recent planting that is
+# spatially intersecting and populate a field called plant_year
+
 process_assigned_activities <- function(assigned_activities) {
 
   # Function to process each group
@@ -447,6 +448,9 @@ process_assigned_activities <- function(assigned_activities) {
 processed_activities <- process_assigned_activities(assigned_activities)
 
 
+
+## Different method
+
 # Subset assigned_activities into two data frames based on IS_Plant
 plant_ <- assigned_activities[assigned_activities$IS_Plant == TRUE, ]
 non_plant <- assigned_activities[assigned_activities$IS_Plant == FALSE, ]
@@ -459,6 +463,7 @@ non_plant$plant_year <- plant$year[match(intersected_plant_non$CRC_VALUE, plant$
 
 # Join back to assigned_activities by CRC_VALUE
 result <- merge(assigned_activities, non_plant, by = "CRC_VALUE", all.x = TRUE)
+
 
 saveRDS(assigned_activities,"assigned_activities_2024.RDS")
 
