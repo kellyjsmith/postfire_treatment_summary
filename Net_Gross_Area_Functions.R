@@ -204,3 +204,30 @@ result <- combined_net_gross_activities(assigned_activities)
 combined_net_gross_activities$net_area_ac <- as.numeric(combined_net_gross_activities$net_area)/4046.86
 combined_net_gross_activities$gross_area_ac <- as.numeric(combined_net_gross_activities$gross_area)/4046.86
 saveRDS(result, "combined_net_gross_activities.RDS")
+
+
+#### Simplified gross and net summary ####
+
+gross_net_summarize_by_year <- function(assigned_activities) {
+  assigned_activities %>%
+    # Add facts_year column
+    mutate(facts_year = Ig_Year + diff_years) %>%
+    # Group by all relevant columns
+    group_by(Event_ID, type_labels, Incid_Name, Ig_Year, facts_year) %>%
+    # Summarize in one step
+    summarize(
+      gross_acres = sum(st_area(geometry)) / 4046.86,
+      net_acres = st_area(st_union(geometry)) / 4046.86,
+      n_dissolved = n(),
+      .groups = "drop"
+    ) %>%
+    # Calculate diff_years after summarization
+    mutate(diff_years = facts_year - Ig_Year) %>%
+    # Rename columns for clarity
+    rename(fire = Incid_Name)
+}
+
+# Usage
+gross_net_summary <- gross_net_summarize_by_year(assigned_activities)
+
+
