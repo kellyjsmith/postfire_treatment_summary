@@ -335,7 +335,7 @@ net_activities <-
              if (dim(filtered)[1] == 0) {
                return(NULL)
              } else{
-               result <- filtered |> group_by(Event_ID, ACTIVITY_TYPE) |>
+               result <- filtered |> group_by(vb_id, type_labels) |>
                  summarize(
                    geometry = st_union(geometry),
                    n_dissolved = n(),
@@ -348,6 +348,7 @@ net_activities <-
                return(result)
              }
            }, assigned_activities = assigned_activities)
+saveRDS(net_activities, "net_activities.RDS")
 
 gross_activities <-
   map2_dfr(comb_fire_diff$fire_year, comb_fire_diff$diff_years,
@@ -359,7 +360,7 @@ gross_activities <-
              if (dim(filtered)[1] == 0) {
                return(NULL)
              } else{
-               result <- filtered |> group_by(Event_ID, ACTIVITY_TYPE) |>
+               result <- filtered |> group_by(vb_id, type_labels) |>
                  summarize(
                    gross_area = sum(st_area(geometry)),
                    Ig_Year = x,
@@ -370,7 +371,7 @@ gross_activities <-
                return(result)
              }
            }, assigned_activities = assigned_activities)
-
+saveRDS(gross_activities, "gross_activities.RDS")
 
 #() net_over_gross <- merge
 

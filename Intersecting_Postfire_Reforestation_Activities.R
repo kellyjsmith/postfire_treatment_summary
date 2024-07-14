@@ -335,9 +335,12 @@ assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 
 # CLEANING ASSIGNED ACTIVITIES
+assigned_activities = unite(assigned_activities, "vb_id", Ig_Year:Incid_Name, remove = FALSE)
+  
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
-assigned_activities <- assigned_activities[,c(keep,"activity_area","facts_polygon_id","year","assigned_fire",
-                                              "assigned_ig_year","assigned_fire_name")]
+
+assigned_activities <- assigned_activities[,c(keep,"vb_id","activity_area","facts_polygon_id","year","assigned_fire"),]
+
 assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by.x="assigned_fire",by.y="Event_ID")
 
 # Replace Event_ID with assigned_fire 
