@@ -8,6 +8,7 @@ library("units")
 library("data.table")
 library("future")
 library("furrr")
+library("units")
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
@@ -19,10 +20,11 @@ new_labels = data.frame(ACTIVITY_TYPE = c("Certified_Planted","Fuels","Plant","S
                                           "Thin","Harvest_Salvage","Need_by_Fire","Survey_Other","Survey_Pretreatment",
                                           "SitePrep_Chem","Survey_Survival","Prune","Need_by_Failure","Certified_TSI"),
                         type_labels = c("Plant Certification","Fuel Reduction","Plant Trees","Stand Exam",
-                                        "Stocking Survey","TSI","Harvest - Non-Salvage","Replant/Fill-in","Silvicultural Prescription","Site Prep (Manual)",
+                                        "Stocking Survey","TSI","Harvest - Non-Salvage","Replant/Fill-in","Silvicultural Prescription","Site Prep - Manual",
                                         "Thin","Harvest - Salvage","Reforestation Need (Fire)","Survey (Other)","Survey (Pretreatment)",
                                         "Site Prep - Chemical","Survival Survey","Prune","Reforestation Need (Failure)","TSI Certification"))
 assigned_activities = merge(assigned_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
+assigned_activities = unite(assigned_activities, "vb_id", Ig_Year:Incid_Name, remove = FALSE)
 
 # Summarize cumulative net and gross area for each combo ####
 # of fire and activity type for a given timespan
@@ -201,8 +203,8 @@ gross_activities <-
            }, assigned_activities = assigned_activities)
 
 
-gross_activities$gross_acres = as.numeric(gross_area / 4046.86)
-net_activities$net_acres = as.numeric(net_area / 4046.86)
+gross_activities$gross_acres = as.numeric(gross_activities$gross_area / 4046.86)
+net_activities$net_acres = as.numeric(net_activities$net_area / 4046.86)
 
 saveRDS(gross_activities, "gross_activities.RDS")
 saveRDS(net_activities, "net_activities.RDS")
@@ -212,7 +214,7 @@ net_activities = readRDS("net_activities.RDS")
 
 gross_activities_ref_year = gross_activities %>%
   st_drop_geometry() %>%
-  group_by(ref_year, type_labels) %>%
+  group_by(vb_id, ref_year, type_labels) %>%
   summarize(total_gross_acres = sum(gross_acres, na.rm = TRUE))
 
 net_activities_ref_year = st_drop_geometry(net_activities)
@@ -272,52 +274,79 @@ combined_net_gross_activities$net_area_ac <- as.numeric(combined_net_gross_activ
 combined_net_gross_activities$gross_area_ac <- as.numeric(combined_net_gross_activities$gross_area)/4046.86
 saveRDS(result, "combined_net_gross_activities.RDS")
 
-# Create comb_fire_diff (equivalent to expand.grid in R)
-unique_years <- unique(assigned_activities$Ig_Year)
-unique_diff_years <- unique(assigned_activities$diff_years)
-comb_fire_diff <- expand.grid(fire_year = unique_years, diff_years = unique_diff_years)
 
-# Initialize empty lists for combined results
-combined_results <- list()
 
-# Process each combination of fire_year and diff_years
-for (i in 1:nrow(comb_fire_diff)) {
-  x <- comb_fire_diff$fire_year[i]
-  y <- comb_fire_diff$diff_years[i]
+## Cumulative gross and net by Activity Year
+
+# Function to calculate gross acres
+calculate_gross_acres <- function(assigned_activities) {
+  gross_activities1 <- assigned_activities %>%
+    group_by(vb_id, type_labels, year) %>%
+    summarize(
+      gross_area = sum(as.numeric(st_area(geometry))),
+      .groups = "drop"
+    ) %>%
+    mutate(gross_acres = gross_area / 4046.86)
   
-  filtered <- assigned_activities %>%
-    filter(Ig_Year == x, diff_years <= y)
-  
-  if (nrow(filtered) > 0) {
-    # Calculate net area
-    net_geometry <- st_union(filtered$geometry)
-    net_area <- st_area(net_geometry)
-    
-    # Calculate gross area
-    gross_area <- sum(st_area(filtered$geometry))
-    
-    # Create a combined result
-    combined_result <- data.frame(
-      vb_id = filtered$vb_id[1],
-      type_labels = filtered$type_labels[1],
-      geometry = net_geometry,
-      n_dissolved = nrow(filtered),
-      Ig_Year = x,
-      diff_years = y,
-      ref_year = x + y,
-      net_area = net_area,
-      gross_area = gross_area
-    )
-    combined_results[[i]] <- combined_result
-  }
+  return(gross_activities1)
 }
 
-# Combine results into a single data frame
-combined_net_gross_activities <- do.call(rbind, combined_results)
+# Function to calculate net acres
+calculate_net_acres <- function(assigned_activities) {
+  net_activities1 <- assigned_activities %>%
+    group_by(vb_id, type_labels, year) %>%
+    summarize(
+      geometry = st_union(geometry),
+      n_dissolved = n(),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      net_area = as.numeric(st_area(geometry)),
+      net_acres = net_area / 4046.86
+    )
+  
+  return(net_activities1)
+}
 
-combined_net_gross_activities$net_area_ac <- as.numeric(combined_net_gross_activities$net_area)/4046.86
-combined_net_gross_activities$gross_area_ac <- as.numeric(combined_net_gross_activities$gross_area)/4046.86
-saveRDS(result, "combined_net_gross_activities.RDS")
+# Function to combine gross and net acres
+combine_gross_net_acres <- function(gross_activities1, net_activities1) {
+  combined_activities <- gross_activities1 %>%
+    select(vb_id, type_labels, year, gross_acres) %>%
+    left_join(
+      net_activities1 %>%
+        st_drop_geometry() %>%
+        select(vb_id, type_labels, year, net_acres, n_dissolved),
+      by = c("vb_id", "type_labels", "year")
+    )
+  
+  return(combined_activities)
+}
+
+# Main function to process the data
+process_activities <- function(assigned_activities) {
+  gross_activities1 <- calculate_gross_acres(assigned_activities)
+  net_activities1 <- calculate_net_acres(assigned_activities)
+  combined_activities <- combine_gross_net_acres(gross_activities1, net_activities1)
+  
+  return(list(
+    gross_activities1 = gross_activities1,
+    net_activities1 = net_activities1,
+    combined_activities = combined_activities
+  ))
+}
+
+# Usage
+results <- process_activities(assigned_activities)
+gross_net_activity_year = results$combined_activities %>%
+  st_drop_geometry()
+
+# Save results
+saveRDS(results$gross_activities, "gross_activities1.RDS")
+saveRDS(results$net_activities, "net_activities1.RDS")
+saveRDS(results$combined_activities, "combined_activities.RDS")
+
+# Print the first few rows of the combined results
+print(head(results$combined_activities))
 
 
 
