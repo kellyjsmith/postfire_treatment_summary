@@ -55,15 +55,16 @@ manage.except.plant = manage[manage != Plant]
 
 
 # Function to prepare fire layer
-prepare_fires <- function(fires, nfs_r5){
+prepare_fires <- function(fires, nfs_r5) {
+  # Ensure valid geometries and filter for polygons
+  fires <- fires %>%
+    st_make_valid() %>%
+    filter(st_is_valid(.), st_dimension(.) == 2)
   
-  # Add YearName ID, filter for years, check polygon validity, add geometric attributes
-  # fires <- fires |> filter(Ig_Year > 1993 & Ig_Year < 2019) # this filtering is being done before the function is applied
-  fires <- fires[st_is_valid(fires),]
-  fires = fires[st_make_valid(fires),]
-  fires <- fires[st_dimension(fires)==2,] 
-  fires <- fires |>
-    group_by(Event_ID) |> summarize(
+  # Group and summarize fire data
+  fires <- fires %>%
+    group_by(Event_ID) %>%
+    summarize(
       geometry = st_union(geometry),
       Ig_Year = first(Ig_Year),
       nIg_Years = n_distinct(Ig_Year),
@@ -71,17 +72,21 @@ prepare_fires <- function(fires, nfs_r5){
       nIncid_Name = n_distinct(Incid_Name),
       sumBurnBndAc = sum(BurnBndAc),
       sumFire_Acres = sum(BurnBndAc)
-    )
-  fires <- st_transform(fires,crs=3310)
-  nfs_r5 = st_transform(nfs_r5,crs = 3310)
+    ) %>%
+    ungroup()
+  
+  # Transform CRS
+  fires <- st_transform(fires, crs = 3310)
+  nfs_r5 <- st_transform(nfs_r5, crs = 3310)
   
   # Clip fires to R5 NF layer
-  nfs_r5 = st_union(nfs_r5)
-  fires = st_intersection(fires, nfs_r5)
+  nfs_r5_union <- st_union(nfs_r5)
+  fires <- st_intersection(fires, nfs_r5_union)
   
+  # Add fire area
   fires$fire_area <- st_area(fires)
-  fires
   
+  return(fires)
 }
 
 # Function to prepare FACTS layer
@@ -115,7 +120,7 @@ prepare_facts <- function(facts){
 
 ## NEW VERSION ##
 # Function to self intersect fire polygons
-self_intersect <- function(polygons, precision=10, area_threshold=0){
+self_intersect <- function(polygons, precision=1, area_threshold=0){
   tryCatch({
     polygons <- st_make_valid(polygons)
     
@@ -198,183 +203,183 @@ cross_facts_fire<-function(polygon, fires_fires){
 ## ORIGINAL VERSION ##
 # Function to intersect facts layer with fire layer
 # call "precision" to remove topology errors and "cores" for parallel processing
-# intersect_activities <- function(activities, fires, precision, cores){
-#   
-#   on.exit(try(stopCluster(cl)))
-#   
-#   # Self-intersect fire layer and create ID to track facts polygon
-#   fires_fires <- self_intersect(fires, precision  =  precision)
-#   # fires_fires<-self_intersect(fires, area_threshold = 0)
-#   facts_polygon_id <- activities$facts_polygon_id
-#   
-#   # Return all intersecting and non-intersecting facts polygons within the fire layer
-#   # st_intersect does not return geometries, so must be added later
-#   intersecting <- st_intersects(fires_fires, activities)
-#   intersecting <- sort(unique(unlist(intersecting)))
-#   # get only polygons that were detected by st_intersects
-#   activities <- activities[intersecting, ]
-#   intersecting <- activities$facts_polygon_id
-#   not_intersecting <- setdiff(facts_polygon_id, intersecting)
-#   
-#   # Split the data frame containing intersecting facts activities by facts_polygon_id;
-#   # 
-#   activities <- activities %>% group_split(facts_polygon_id)
-#   
-#   print("Starting intersection")
-#   print(Sys.time())
-#   loaded  <-  .packages()
-#   cl <- makeCluster(cores)
-#   registerDoParallel(cl)
-#   fires_activities  <-  foreach(
-#     x  =  activities,
-#     .packages  =  loaded,
-#     .export = "cross_facts_fire"
-#   )  %dopar%  {
-#     cross_facts_fire(x, fires_fires)
-#   }
-#   
-#   n  <-  length(fires_activities)
-#   group_ids  <-
-#     data.frame(ids  =  1:n, group  =  sample(1:cores, n, replace  =  TRUE))
-#   result_parts <- lapply(1:cores, function(x) {
-#     ids  <-  group_ids[group_ids$group  ==  x, "ids"]
-#     fires_activities[ids]
-#   })
-#   
-#   
-#   on.exit(try(stopCluster(cl)))
-#   
-#   fires_activities <- foreach(
-#     x = result_parts,
-#     .packages = loaded,
-#     .combine = rbind) %dopar% {do.call(rbind, x)}
-#   
-#   stopCluster(cl)
-#   print("Intersection finished")
-#   print(Sys.time())
-#   
-#   fires_activities <- st_as_sf(fires_activities)
-#   missing_intersecting  <-
-#     intersecting[!intersecting  %in%  fires_activities$facts_polygon_id]
-#   
-#   
-#   return(
-#     list(
-#       activities  =  activities,
-#       fires =  fires,
-#       fires_fires = fires_fires,
-#       fires_activities  =  fires_activities,
-#       intersecting  =  intersecting,
-#       not_intersecting  =  not_intersecting,
-#       missing_intersecting  =  missing_intersecting
-#     )
-#   )
-# }
+intersect_activities <- function(activities, fires, precision, cores){
+
+  on.exit(try(stopCluster(cl)))
+
+  # Self-intersect fire layer and create ID to track facts polygon
+  fires_fires <- self_intersect(fires, precision  =  precision)
+  # fires_fires<-self_intersect(fires, area_threshold = 0)
+  facts_polygon_id <- activities$facts_polygon_id
+
+  # Return all intersecting and non-intersecting facts polygons within the fire layer
+  # st_intersect does not return geometries, so must be added later
+  intersecting <- st_intersects(fires_fires, activities)
+  intersecting <- sort(unique(unlist(intersecting)))
+  # get only polygons that were detected by st_intersects
+  activities <- activities[intersecting, ]
+  intersecting <- activities$facts_polygon_id
+  not_intersecting <- setdiff(facts_polygon_id, intersecting)
+
+  # Split the data frame containing intersecting facts activities by facts_polygon_id;
+  #
+  activities <- activities %>% group_split(facts_polygon_id)
+
+  print("Starting intersection")
+  print(Sys.time())
+  loaded  <-  .packages()
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  fires_activities  <-  foreach(
+    x  =  activities,
+    .packages  =  loaded,
+    .export = "cross_facts_fire"
+  )  %dopar%  {
+    cross_facts_fire(x, fires_fires)
+  }
+
+  n  <-  length(fires_activities)
+  group_ids  <-
+    data.frame(ids  =  1:n, group  =  sample(1:cores, n, replace  =  TRUE))
+  result_parts <- lapply(1:cores, function(x) {
+    ids  <-  group_ids[group_ids$group  ==  x, "ids"]
+    fires_activities[ids]
+  })
+
+
+  on.exit(try(stopCluster(cl)))
+
+  fires_activities <- foreach(
+    x = result_parts,
+    .packages = loaded,
+    .combine = rbind) %dopar% {do.call(rbind, x)}
+
+  stopCluster(cl)
+  print("Intersection finished")
+  print(Sys.time())
+
+  fires_activities <- st_as_sf(fires_activities)
+  missing_intersecting  <-
+    intersecting[!intersecting  %in%  fires_activities$facts_polygon_id]
+
+
+  return(
+    list(
+      activities  =  activities,
+      fires =  fires,
+      fires_fires = fires_fires,
+      fires_activities  =  fires_activities,
+      intersecting  =  intersecting,
+      not_intersecting  =  not_intersecting,
+      missing_intersecting  =  missing_intersecting
+    )
+  )
+}
 
 
 ## NEW VERSION ##
 # Function to intersect facts layer with fire layer
 # call "precision" to remove topology errors and "cores" for parallel processing
-intersect_activities <- function(activities, fires, precision, cores){
-  on.exit(try(stopCluster(cl)))
-  
-  # Process fires in smaller chunks
-  chunk_size <- 50  # Adjust as needed
-  fire_chunks <- split(fires, ceiling(seq_len(nrow(fires))/chunk_size))
-  
-  fires_fires_list <- lapply(fire_chunks, function(chunk) {
-    tryCatch({
-      self_intersect(chunk, precision = precision)
-    }, error = function(e) {
-      message("Error processing chunk: ", e$message)
-      return(NULL)
-    })
-  })
-  
-  # Remove NULL results and combine
-  fires_fires_list <- fires_fires_list[!sapply(fires_fires_list, is.null)]
-  fires_fires <- do.call(rbind, fires_fires_list)
-  
-  if(is.null(fires_fires) || nrow(fires_fires) == 0) {
-    stop("No valid fire polygons after processing")
-  }
-  
-  print("Fire polygons processed")
-  print(Sys.time())
-  
-  facts_polygon_id <- activities$facts_polygon_id
-  
-  # Use st_intersects for initial filtering
-  intersecting <- st_intersects(fires_fires, activities)
-  intersecting <- sort(unique(unlist(intersecting)))
-  activities <- activities[intersecting, ]
-  intersecting <- activities$facts_polygon_id
-  not_intersecting <- setdiff(facts_polygon_id, intersecting)
-  
-  print("Initial filtering completed")
-  print(Sys.time())
-  
-  activities <- activities %>% group_split(facts_polygon_id)
-  
-  print("Starting intersection")
-  print(Sys.time())
-  loaded <- .packages()
-  cl <- makeCluster(cores)
-  registerDoParallel(cl)
-  
-  fires_activities <- foreach(
-    x = activities,
-    .packages = loaded,
-    .export = "cross_facts_fire"
-  ) %dopar% {
-    cross_facts_fire(x, fires_fires)
-  }
-  
-  stopCluster(cl)
-  print("Intersection finished")
-  print(Sys.time())
-  
-  print("Starting to combine results")
-  fires_activities <- tryCatch({
-    result <- do.call(rbind, fires_activities)
-    print("Results combined")
-    result
-  }, error = function(e) {
-    print(paste("Error combining results:", e$message))
-    return(NULL)
-  })
-  
-  if(!is.null(fires_activities)) {
-    print("Converting to sf object")
-    fires_activities <- tryCatch({
-      result <- st_as_sf(fires_activities)
-      print("Conversion to sf object completed")
-      result
-    }, error = function(e) {
-      print(paste("Error converting to sf object:", e$message))
-      return(NULL)
-    })
-  }
-  
-  print("Calculating missing intersecting")
-  missing_intersecting <- intersecting[!intersecting %in% fires_activities$facts_polygon_id]
-  
-  print("Preparing return list")
-  return_list <- list(
-    activities = activities,
-    fires = fires,
-    fires_fires = fires_fires,
-    fires_activities = fires_activities,
-    intersecting = intersecting,
-    not_intersecting = not_intersecting,
-    missing_intersecting = missing_intersecting
-  )
-  
-  print("Function completed")
-  print(Sys.time())
-  
-  return(return_list)
-}
+# intersect_activities <- function(activities, fires, precision, cores){
+#   on.exit(try(stopCluster(cl)))
+#   
+#   # Process fires in smaller chunks
+#   chunk_size <- 50  # Adjust as needed
+#   fire_chunks <- split(fires, ceiling(seq_len(nrow(fires))/chunk_size))
+#   
+#   fires_fires_list <- lapply(fire_chunks, function(chunk) {
+#     tryCatch({
+#       self_intersect(chunk, precision = precision)
+#     }, error = function(e) {
+#       message("Error processing chunk: ", e$message)
+#       return(NULL)
+#     })
+#   })
+#   
+#   # Remove NULL results and combine
+#   fires_fires_list <- fires_fires_list[!sapply(fires_fires_list, is.null)]
+#   fires_fires <- do.call(rbind, fires_fires_list)
+#   
+#   if(is.null(fires_fires) || nrow(fires_fires) == 0) {
+#     stop("No valid fire polygons after processing")
+#   }
+#   
+#   print("Fire polygons processed")
+#   print(Sys.time())
+#   
+#   facts_polygon_id <- activities$facts_polygon_id
+#   
+#   # Use st_intersects for initial filtering
+#   intersecting <- st_intersects(fires_fires, activities)
+#   intersecting <- sort(unique(unlist(intersecting)))
+#   activities <- activities[intersecting, ]
+#   intersecting <- activities$facts_polygon_id
+#   not_intersecting <- setdiff(facts_polygon_id, intersecting)
+#   
+#   print("Initial filtering completed")
+#   print(Sys.time())
+#   
+#   activities <- activities %>% group_split(facts_polygon_id)
+#   
+#   print("Starting intersection")
+#   print(Sys.time())
+#   loaded <- .packages()
+#   cl <- makeCluster(cores)
+#   registerDoParallel(cl)
+#   
+#   fires_activities <- foreach(
+#     x = activities,
+#     .packages = loaded,
+#     .export = "cross_facts_fire"
+#   ) %dopar% {
+#     cross_facts_fire(x, fires_fires)
+#   }
+#   
+#   stopCluster(cl)
+#   print("Intersection finished")
+#   print(Sys.time())
+#   
+#   print("Starting to combine results")
+#   fires_activities <- tryCatch({
+#     result <- do.call(rbind, fires_activities)
+#     print("Results combined")
+#     result
+#   }, error = function(e) {
+#     print(paste("Error combining results:", e$message))
+#     return(NULL)
+#   })
+#   
+#   if(!is.null(fires_activities)) {
+#     print("Converting to sf object")
+#     fires_activities <- tryCatch({
+#       result <- st_as_sf(fires_activities)
+#       print("Conversion to sf object completed")
+#       result
+#     }, error = function(e) {
+#       print(paste("Error converting to sf object:", e$message))
+#       return(NULL)
+#     })
+#   }
+#   
+#   print("Calculating missing intersecting")
+#   missing_intersecting <- intersecting[!intersecting %in% fires_activities$facts_polygon_id]
+#   
+#   print("Preparing return list")
+#   return_list <- list(
+#     activities = activities,
+#     fires = fires,
+#     fires_fires = fires_fires,
+#     fires_activities = fires_activities,
+#     intersecting = intersecting,
+#     not_intersecting = not_intersecting,
+#     missing_intersecting = missing_intersecting
+#   )
+#   
+#   print("Function completed")
+#   print(Sys.time())
+#   
+#   return(return_list)
+# }
 
 # Function for summarizing fires_activities for overlapping fires
 assign_activities <- function(fires_activities, fires){
@@ -448,20 +453,20 @@ setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treat
 
 nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
-fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
-# fires$Ig_Date <- as.Date(fires$Ig_Date/(1000*24*60*60),origin="1970-01-01")
-# fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
-# fires <- st_read(dsn = "../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
+facts <- st_read("../Data/facts_r5.shp")
+
+fires <- st_read(dsn = "../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
+
 
 fires = fires %>%
-  # mutate(Ig_Year = year(Ig_Date)) %>%
+  mutate(Ig_Year = year(Ig_Date)) %>%
+  mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
   filter(Incid_Type == "Wildfire") %>%
   filter(Ig_Year > 1993)
 
 fires <- prepare_fires(fires,nfs_r5)
-saveRDS(fires, "prepared_fires.RDS")
 
-facts <- st_read("../Data/facts_r5.shp")
+
 
 # Filter out activities completed before study period
 facts <- facts %>%
@@ -473,17 +478,19 @@ facts <- facts[,keep]
 
 # Run function to prepare dataset
 facts <- prepare_facts(facts)
+
+
+#### Conduct intersection and assign activities ####
+facts_fires <- intersect_activities(facts, fires, precision=1, cores=10)
+facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
+                                                            facts_fires$fires,10)
+
+
+saveRDS(fires, "prepared_fires.RDS")
 saveRDS(facts, "prepared_facts.RDS")
 
 fires = readRDS("prepared_fires.RDS")
 facts = readRDS("prepared_facts.RDS")
-
-#### Conduct intersection and assign activities ####
-facts_fires <- intersect_activities(facts, fires, precision=10, cores=10)
-facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
-                                                            facts_fires$fires,10)
-
-setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
 saveRDS(facts_fires,"facts_fires_2024.RDS")
 
