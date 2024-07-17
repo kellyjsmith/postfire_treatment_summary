@@ -173,17 +173,23 @@ prepare_facts <- function(facts){
 # Function to self intersect fire polygons
 self_intersect <- function(polygons, precision=0.0001, area_threshold=0){
 
-  polygons <- fires 
-  poygons <- st_cast(polygons,"MULTIPOLYGON")
-  polygons<-st_buffer(polygons,0)
-  polygons <- st_transform(fires,5070)
-  polygons<- st_intersection(polygons)
-  
+  # polygons <- rbind(fires[fires$Ig_Year>=2018,c("Ig_Year","Incid_Name","Event_ID")],
+  #                   fires2[,c("Ig_Year","Incid_Name","Event_ID")])
+  # 
+  # 
+  # polygons <- fires2
+  polygons<-st_make_valid(polygons)
+  polygons <- st_buffer(polygons,0)
+  polygons <- st_cast(polygons,"MULTIPOLYGON")
   if(!is.null(precision)){
-    st_precision(polygons)<-precision
+    st_precision(polygons)<-10
   }
   polygons<-st_make_valid(polygons)
   polygons<-polygons[st_is_valid(polygons),]
+  
+  polygons<- st_intersection(polygons)
+  
+  
   polygons <- polygons[st_dimension(polygons)==2,]
   polygons$area <- as.double(st_area(polygons))
 
@@ -461,20 +467,20 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
 
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires = st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+fires2 = st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 facts <- st_read("../../Data/facts_r5.shp")
 
-fires <- st_read(dsn = "../../Data/Severity/S_USA.FirePerimeterFinal-selected/S_USA.FirePerimeterFinal.shp", stringsAsFactors = FALSE)
-fires <- fires %>% rename(Ig_Year="FIREYEAR",
-                          Incid_Name = "FIRENAME",
-                          BurnBndAc="GISACRES",
-                          Event_ID="GLOBALID")
+# fires <- st_read(dsn = "../../Data/Severity/S_USA.FirePerimeterFinal-selected/S_USA.FirePerimeterFinal.shp", stringsAsFactors = FALSE)
+# fires <- fires %>% rename(Ig_Year="FIREYEAR",
+#                           Incid_Name = "FIRENAME",
+#                           BurnBndAc="GISACRES",
+#                           Event_ID="GLOBALID")
 
 # fires$Ig_Date<- as.Date(fires$Ig_Date)
 fires = fires %>%
-  # mutate(Ig_Year = year(Ig_Date)) %>%
-  # mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
-  # filter(Incid_Type == "Wildfire") %>%
+  mutate(Ig_Year = year(Ig_Date)) %>%
+  mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
+  filter(Incid_Type == "Wildfire") %>%
   filter(BurnBndAc>1000)%>%
   filter(Ig_Year>1993&Ig_Year<2023)
 
