@@ -56,6 +56,11 @@ manage.except.plant = manage[manage != Plant]
 
 # Function to prepare fire layer
 prepare_fires <- function(fires, nfs_r5) {
+  # Transform CRS
+  # fires <- st_transform(fires, crs = 5070)
+  # nfs_r5 <- st_transform(nfs_r5, crs = 5070)
+  
+  
   # Ensure valid geometries and filter for polygons
   fires <- fires %>%
     st_make_valid() %>%
@@ -75,9 +80,9 @@ prepare_fires <- function(fires, nfs_r5) {
     ) %>%
     ungroup()
   
-  # Transform CRS
-  fires <- st_transform(fires, crs = 3310)
-  nfs_r5 <- st_transform(nfs_r5, crs = 3310)
+
+  fires <- st_transform(fires, crs = 5070)
+  nfs_r5 <- st_transform(nfs_r5, crs = 5070)
   
   # Clip fires to R5 NF layer
   nfs_r5_union <- st_union(nfs_r5)
@@ -86,12 +91,13 @@ prepare_fires <- function(fires, nfs_r5) {
   # Add fire area
   fires$fire_area <- st_area(fires)
   
+  # fires <- st_transform(fires, crs = 3310)
   return(fires)
 }
 
 # Function to prepare FACTS layer
 prepare_facts <- function(facts){
-  facts <- st_transform(facts,crs=3310)
+  facts <- st_transform(facts,crs=5070)
   
   # Rename acreage fields
   facts$ACRES_COMPLETED = facts$NBR_UNITS1
@@ -120,66 +126,69 @@ prepare_facts <- function(facts){
 
 ## NEW VERSION ##
 # Function to self intersect fire polygons
-self_intersect <- function(polygons, precision=1, area_threshold=0){
-  tryCatch({
-    polygons <- st_make_valid(polygons)
-    
-    # Simplify geometries slightly to reduce complexity
-    polygons <- st_simplify(polygons, dTolerance = 1)  # Adjust tolerance as needed
-    
-    # Ensure consistent column structure
-    original_cols <- names(polygons)
-    
-    # Instead of full intersection, we'll use st_overlap to find overlapping polygons
-    overlaps <- st_overlaps(polygons)
-    
-    # For polygons that overlap, we'll use st_intersection
-    result <- lapply(seq_along(overlaps), function(i) {
-      if(length(overlaps[[i]]) > 0) {
-        intersected <- st_intersection(polygons[i,], polygons[overlaps[[i]],])
-        # Ensure consistent columns
-        intersected <- intersected[, original_cols]
-        return(rbind(polygons[i,], intersected))
-      } else {
-        return(polygons[i,])
-      }
-    })
-    
-    result <- do.call(rbind, result)
-    
-    if(!is.null(precision)){
-      st_precision(result) <- precision
-    }
-    
-    result <- st_make_valid(result)
-    result <- result[st_is_valid(result),]
-    result <- result[st_dimension(result)==2,]
-    result$area <- as.numeric(st_area(result))
-    
-    return(result[result$area > area_threshold,])
-  }, error = function(e) {
-    message("Error in self_intersect: ", e$message)
-    return(polygons)  # Return original polygons if processing fails
-  })
-}
+# self_intersect <- function(polygons, precision=1, area_threshold=0){
+#   tryCatch({
+#     polygons <- st_make_valid(polygons)
+#     
+#     # Simplify geometries slightly to reduce complexity
+#     polygons <- st_simplify(polygons, dTolerance = 1)  # Adjust tolerance as needed
+#     
+#     # Ensure consistent column structure
+#     original_cols <- names(polygons)
+#     
+#     # Instead of full intersection, we'll use st_overlap to find overlapping polygons
+#     overlaps <- st_overlaps(polygons)
+#     
+#     # For polygons that overlap, we'll use st_intersection
+#     result <- lapply(seq_along(overlaps), function(i) {
+#       if(length(overlaps[[i]]) > 0) {
+#         intersected <- st_intersection(polygons[i,], polygons[overlaps[[i]],])
+#         # Ensure consistent columns
+#         intersected <- intersected[, original_cols]
+#         return(rbind(polygons[i,], intersected))
+#       } else {
+#         return(polygons[i,])
+#       }
+#     })
+#     
+#     result <- do.call(rbind, result)
+#     
+#     if(!is.null(precision)){
+#       st_precision(result) <- precision
+#     }
+#     
+#     result <- st_make_valid(result)
+#     result <- result[st_is_valid(result),]
+#     result <- result[st_dimension(result)==2,]
+#     result$area <- as.numeric(st_area(result))
+#     
+#     return(result[result$area > area_threshold,])
+#   }, error = function(e) {
+#     message("Error in self_intersect: ", e$message)
+#     return(polygons)  # Return original polygons if processing fails
+#   })
+# }
 
 ## ORIGINAL VERSION ##
 # Function to self intersect fire polygons
-# self_intersect <- function(polygons, precision=0.0001, area_threshold=0){
-# 
-#   polygons<-st_make_valid(polygons)
-#   polygons<- st_intersection(polygons)
-#   # polygons<-st_buffer(polygons,0)
-#   if(!is.null(precision)){
-#     st_precision(polygons)<-precision
-#   }
-#   polygons<-st_make_valid(polygons)
-#   polygons<-polygons[st_is_valid(polygons),]
-#   polygons <- polygons[st_dimension(polygons)==2,]
-#   polygons$area <- as.double(st_area(polygons))
-# 
-#   return(polygons[polygons$area>area_threshold,])
-# }
+self_intersect <- function(polygons, precision=0.0001, area_threshold=0){
+
+  polygons <- fires 
+  poygons <- st_cast(polygons,"MULTIPOLYGON")
+  polygons<-st_buffer(polygons,0)
+  polygons <- st_transform(fires,5070)
+  polygons<- st_intersection(polygons)
+  
+  if(!is.null(precision)){
+    st_precision(polygons)<-precision
+  }
+  polygons<-st_make_valid(polygons)
+  polygons<-polygons[st_is_valid(polygons),]
+  polygons <- polygons[st_dimension(polygons)==2,]
+  polygons$area <- as.double(st_area(polygons))
+
+  return(polygons[polygons$area>area_threshold,])
+}
 
 
 # Function to intersect facts_polygon_id values with self-intersected fire layer
@@ -451,18 +460,23 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
 
-nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
-facts <- st_read("../Data/facts_r5.shp")
+nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+fires = st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+facts <- st_read("../../Data/facts_r5.shp")
 
-fires <- st_read(dsn = "../Data/Severity/mtbs_perims_DD.shp", stringsAsFactors = FALSE)
+fires <- st_read(dsn = "../../Data/Severity/S_USA.FirePerimeterFinal-selected/S_USA.FirePerimeterFinal.shp", stringsAsFactors = FALSE)
+fires <- fires %>% rename(Ig_Year="FIREYEAR",
+                          Incid_Name = "FIRENAME",
+                          BurnBndAc="GISACRES",
+                          Event_ID="GLOBALID")
 
-
+# fires$Ig_Date<- as.Date(fires$Ig_Date)
 fires = fires %>%
-  mutate(Ig_Year = year(Ig_Date)) %>%
-  mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
-  filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year > 1993)
+  # mutate(Ig_Year = year(Ig_Date)) %>%
+  # mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
+  # filter(Incid_Type == "Wildfire") %>%
+  filter(BurnBndAc>1000)%>%
+  filter(Ig_Year>1993&Ig_Year<2023)
 
 fires <- prepare_fires(fires,nfs_r5)
 
@@ -605,7 +619,13 @@ process_assigned_activities <- function(assigned_activities) {
   # Diagnostic information
   cat("Total rows:", nrow(result), "\n")
   cat("Rows with non-NA plant_year:", sum(!is.na(result$plant_year)), "\n")
-  cat("Unique Event_IDs:", length(unique(result$Event_ID)), "\n")
+  cat("Unique Event_I      geometry = st_union(geometry),
+      Ig_Year = first(Ig_Year),
+      nIg_Years = n_distinct(Ig_Year),
+      Incid_Name = first(Incid_Name),
+      nIncid_Name = n_distinct(Incid_Name),
+      sumBurnBndAc = sum(BurnBndAc),
+      sumFire_Acres = sum(BurnBndAc)Ds:", length(unique(result$Event_ID)), "\n")
   cat("Rows with IS_Plant == TRUE:", sum(result$IS_Plant), "\n")
   cat("Rows with IS_Plant == FALSE:", sum(!result$IS_Plant), "\n")
   
