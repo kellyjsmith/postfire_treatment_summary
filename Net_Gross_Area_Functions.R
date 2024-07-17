@@ -18,13 +18,14 @@ facts_fires = readRDS("facts_fires_2024.RDS")
 new_labels = data.frame(ACTIVITY_TYPE = c("Certified_Planted","Fuels","Plant","Stand_Exam",
                                           "Survey_Stocking","TSI","Harvest_NonSalv","Replant","Silv_Prescription","SitePrep_NonChem",
                                           "Thin","Harvest_Salvage","Need_by_Fire","Survey_Other","Survey_Pretreatment",
-                                          "SitePrep_Chem","Survey_Survival","Prune","Need_by_Failure","Certified_TSI"),
-                        type_labels = c("Plant Certification","Fuel Reduction","Plant Trees","Stand Exam",
+                                          "SitePrep_Chem","Survey_Survival","Prune","Need_by_Failure","Certified_Thin","Certified_TSI"),
+                        type_labels = c("Certification - Plant Trees","Fuel Reduction","Plant Trees","Stand Exam",
                                         "Stocking Survey","TSI","Harvest - Non-Salvage","Replant/Fill-in","Silvicultural Prescription","Site Prep - Manual",
                                         "Thin","Harvest - Salvage","Reforestation Need (Fire)","Survey (Other)","Survey (Pretreatment)",
-                                        "Site Prep - Chemical","Survival Survey","Prune","Reforestation Need (Failure)","TSI Certification"))
+                                        "Site Prep - Chemical","Survival Survey","Prune","Reforestation Need (Failure)","Thinning Certification",
+                                        "Certification - TSI"))
 assigned_activities = merge(assigned_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
-assigned_activities = unite(assigned_activities, "vb_id", Ig_Year:Incid_Name, remove = FALSE)
+
 
 # Summarize cumulative net and gross area for each combo ####
 # of fire and activity type for a given timespan
@@ -37,14 +38,14 @@ net_gross_cumulative <- function(start,end,assigned_activities){
     return(NULL)
   } else{
     filtered$gross_area <- st_area(filtered)
-    net_gross <- filtered |> group_by(Event_ID, ACTIVITY_TYPE) |>
+    net_gross <- filtered |> group_by(Event_ID, type_labels) |>
       summarize(
         geometry = st_union(geometry),
         gross_area = sum(gross_area)
       )
     net_gross$net_area <- st_area(net_gross)
     
-    result <- net_gross |> group_by(ACTIVITY_TYPE) |>
+    result <- net_gross |> group_by(type_labels) |>
       summarize(
         net_area = sum(net_area),
         gross_area = sum(gross_area)
@@ -62,7 +63,22 @@ gross_net_cumulative <- map2_dfr(rep(1994,30),c(1994:2023),
 
 gross_net_cumulative$net_area_ac <- as.numeric(gross_net_cumulative$net_area)/4046.86
 gross_net_cumulative$gross_area_ac <- as.numeric(gross_net_cumulative$gross_area)/4046.86
+gross_net_cumulative$diff_years = gross_net_cumulative$end - gross_net_cumulative$start
+
 saveRDS(gross_net_cumulative, "gross_net_cumulative.RDS")
+
+combined_cumulative = st_drop_geometry(gross_net_cumulative)
+
+treat = c("Fuel Reduction", "Harvest - Non-Salvage", "Harvest - Salvage", "Plant Trees",
+          "Prune", "Replant/Fill-in", "Site Prep - Chemical", "Site Prep - Manual", "Thin", "TSI")
+monitor = c("Plant Certification", "Reforestation Need (Failure)", "Reforestation Need (Fire)",
+            "Silvicultural Prescription", "Stand Exam", "Stocking Survey", "Survey (Other)",
+            "Survey (Pretreatment)", "Survival Survey","Thin Certification", "TSI Certification")
+
+combined_cumulative_treat = combined_cumulative %>%
+  filter(type_labels %in% treat)
+combined_cumulative_monitor = combined_cumulative %>%
+  filter(type_labels %in% monitor)
 
 # Cumulative area since 1994, only activities within 5 years of ignition
 gross_net_cumulative_5years <- map2_dfr(rep(1994,25),c(1994:2018),
@@ -71,8 +87,15 @@ gross_net_cumulative_5years <- map2_dfr(rep(1994,25),c(1994:2018),
 
 gross_net_cumulative_5years$net_area_ac <- as.numeric(gross_net_cumulative_5years$net_area)/4046.86
 gross_net_cumulative_5years$gross_area_ac <- as.numeric(gross_net_cumulative_5years$gross_area)/4046.86
+
 saveRDS(gross_net_cumulative_5years, "gross_net_cumulative_5years.RDS")
 
+combined_cumulative_5years = st_drop_geometry(gross_net_cumulative_5years)
+
+combined_cumulative_treat_5years = combined_cumulative_5years %>%
+  filter(type_labels %in% treat)
+combined_cumulative_monitor_5years = combined_cumulative_5years %>%
+  filter(type_labels %in% monitor)
 
 #### Summarize the net and gross area completed for each ignition year ####
 
@@ -86,7 +109,7 @@ net_gross_ignition <- function(nyears,assigned_activities){
     return(NULL)
   } else{
     filtered$gross_area <- st_area(filtered)
-    result <- filtered %>% group_by(Ig_Year, ACTIVITY_TYPE) %>%
+    result <- filtered %>% group_by(Ig_Year, type_labels) %>%
       summarize(
         geometry = st_union(geometry),
         gross_area = sum(gross_area)

@@ -14,8 +14,9 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
 
 # Define reforestation management categories ####
 Certified_Planted <- "Certification-Planted"
+Certified_Thin = "TSI Certification - Thinning"
 Certified_TSI = c("TSI Certification - Release/weeding",
-                  "TSI Certification - Thinning", "TSI Certification - Fertilizaiton", 
+                  "TSI Certification - Fertilizaiton", 
                   "TSI Certification - Cleaning", "TSI Certification - Pruning")
 Fuels <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
            "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
@@ -36,19 +37,18 @@ Stand_Exam = c("Silvicultural Stand Examination", "Low Intensity Stand Examinati
 Survey_Stocking <- "Stocking Survey"
 Survey_Survival = "Plantation Survival Survey"
 Survey_Other = c("Vegetative Competition Survey","Post Treatment Vegetation Monitoring", "Stand Diagnosis Prepared")
-Survey_Pretreatment = c("Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation",
-                        "Pretreatment Exam for Reforestation")
+Survey_Pretreatment = c("Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation")
 Silv_Prescription = "Stand Silviculture Prescription"
 Thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
-TSI <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement") 
+TSI <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement")
 
-types = c("Certified_Planted","Certified_TSI","Fuels","Harvest_NonSalv","Harvest_Salvage",
+types = c("Certified_Planted","Certified_Thin","Certified_TSI","Fuels","Harvest_NonSalv","Harvest_Salvage",
           "Need_by_Failure","Need_by_Fire","Plant","Prune","Replant","SitePrep_Chem","SitePrep_NonChem",
           "Stand_Exam","Survey_Other","Survey_Pretreatment","Survey_Stocking","Survey_Survival",
           "Silv_Prescription","Thin","TSI")
 treat = c(Fuels,Harvest_NonSalv,Harvest_Salvage,Prune,Replant,
           SitePrep_Chem,SitePrep_NonChem,Thin,TSI)
-monitor = c(Certified_Planted,Certified_TSI,Need_by_Failure,Need_by_Fire,Stand_Exam,
+monitor = c(Certified_Planted,Certified_Thin,Certified_TSI,Need_by_Failure,Need_by_Fire,Stand_Exam,
             Survey_Other,Survey_Pretreatment,Survey_Stocking,Survey_Survival,Silv_Prescription)
 manage <- c(Plant,treat,monitor)
 manage.except.plant = manage[manage != Plant]
@@ -114,20 +114,42 @@ prepare_facts <- function(facts){
 }
 
 # Function to self intersect fire polygons
-self_intersect <- function(polygons, precision=100, area_threshold=0){
-  
-  polygons<-st_make_valid(polygons)
-  polygons<- st_intersection(polygons)
-  # polygons<-st_buffer(polygons,0)
-  if(!is.null(precision)){
-    st_precision(polygons)<-precision
-  }
-  polygons<-st_make_valid(polygons)
-  polygons<-polygons[st_is_valid(polygons),]
-  polygons <- polygons[st_dimension(polygons)==2,]
-  polygons$area <- as.double(st_area(polygons))
-  
-  return(polygons[polygons$area>area_threshold,])
+self_intersect <- function(polygons, precision=10, area_threshold=0){
+  tryCatch({
+    polygons <- st_make_valid(polygons)
+    
+    # Simplify geometries slightly to reduce complexity
+    polygons <- st_simplify(polygons, dTolerance = 1000)  # Adjust tolerance as needed
+    
+    # Instead of full intersection, we'll use st_overlap to find overlapping polygons
+    overlaps <- st_overlaps(polygons)
+    
+    # For polygons that overlap, we'll use st_intersection
+    result <- lapply(seq_along(overlaps), function(i) {
+      if(length(overlaps[[i]]) > 0) {
+        intersected <- st_intersection(polygons[i,], polygons[overlaps[[i]],])
+        return(rbind(polygons[i,], intersected))
+      } else {
+        return(polygons[i,])
+      }
+    })
+    
+    result <- do.call(rbind, result)
+    
+    if(!is.null(precision)){
+      st_precision(result) <- precision
+    }
+    
+    result <- st_make_valid(result)
+    result <- result[st_is_valid(result),]
+    result <- result[st_dimension(result)==2,]
+    result$area <- as.numeric(st_area(result))
+    
+    return(result[result$area > area_threshold,])
+  }, error = function(e) {
+    message("Error in self_intersect: ", e$message)
+    return(polygons)  # Return original polygons if processing fails
+  })
 }
 
 # Function to intersect facts_polygon_id values with self-intersected fire layer
@@ -149,79 +171,61 @@ cross_facts_fire<-function(polygon, fires_fires){
 
 # Function to intersect facts layer with fire layer
 # call "precision" to remove topology errors and "cores" for parallel processing
-intersect_activities <- function(activities, fires, precision, cores){
-  
+intersect_activities <- function(activities, fires, precision, cores, chunk_size = 10000){
   on.exit(try(stopCluster(cl)))
   
-  # Self-intersect fire layer and create ID to track facts polygon
-  fires_fires <- self_intersect(fires, precision  =  precision)
-  # fires_fires<-self_intersect(fires, area_threshold = 0)
-  facts_polygon_id <- activities$facts_polygon_id
+  print("begin fire chunk")
+  begin = Sys.time()
+  fire_chunks <- split(fires, ceiling(seq_len(nrow(fires))/chunk_size))
   
-  # Return all intersecting and non-intersecting facts polygons within the fire layer
-  # st_intersect does not return geometries, so must be added later
-  intersecting <- st_intersects(fires_fires, activities)
-  intersecting <- sort(unique(unlist(intersecting)))
-  # get only polygons that were detected by st_intersects
-  activities <- activities[intersecting, ]
-  intersecting <- activities$facts_polygon_id
-  not_intersecting <- setdiff(facts_polygon_id, intersecting)
-  
-  # Split the data frame containing intersecting facts activities by facts_polygon_id;
-  # 
-  activities <- activities %>% group_split(facts_polygon_id)
-  
-  print("Starting intersection")
-  print(Sys.time())
-  loaded  <-  .packages()
   cl <- makeCluster(cores)
   registerDoParallel(cl)
-  fires_activities  <-  foreach(
-    x  =  activities,
-    .packages  =  loaded,
-    .export = "cross_facts_fire"
-  )  %dopar%  {
-    cross_facts_fire(x, fires_fires)
+  
+  results <- list()
+  
+  for (i in seq_along(fire_chunks)) {
+    chunk <- fire_chunks[[i]]
+    
+    fires_fires <- self_intersect(chunk, precision = precision)
+    
+    print("chunk 1 self-intersect complete")
+    print(Sys.time())
+    
+    if(is.null(fires_fires) || nrow(fires_fires) == 0) {
+      next
+    }
+    
+    intersecting <- st_intersects(fires_fires, activities)
+    intersecting <- sort(unique(unlist(intersecting)))
+    chunk_activities <- activities[intersecting, ]
+    
+    chunk_activities <- chunk_activities %>% group_split(facts_polygon_id)
+    
+    fires_activities <- foreach(
+      x = chunk_activities,
+      .packages = c('sf'),
+      .export = "cross_facts_fire"
+    ) %dopar% {
+      cross_facts_fire(x, fires_fires)
+    }
+    
+    fires_activities <- do.call(rbind, fires_activities)
+    fires_activities <- st_as_sf(fires_activities)
+    
+    results[[i]] <- fires_activities
+    
+    print(paste("Processed chunk", i, "of", length(fire_chunks),
+                "time elapsed:"))
+    elapsed = Sys.time() - begin
+    print(elapsed)
   }
   
-  n  <-  length(fires_activities)
-  group_ids  <-
-    data.frame(ids  =  1:n, group  =  sample(1:cores, n, replace  =  TRUE))
-  result_parts <- lapply(1:cores, function(x) {
-    ids  <-  group_ids[group_ids$group  ==  x, "ids"]
-    fires_activities[ids]
-  })
-  
-  
-  on.exit(try(stopCluster(cl)))
-  
-  fires_activities <- foreach(
-    x = result_parts,
-    .packages = loaded,
-    .combine = rbind) %dopar% {do.call(rbind, x)}
-  
   stopCluster(cl)
-  print("Intersection finished")
-  print(Sys.time())
   
-  fires_activities <- st_as_sf(fires_activities)
-  missing_intersecting  <-
-    intersecting[!intersecting  %in%  fires_activities$facts_polygon_id]
+  final_result <- do.call(rbind, results)
   
-  
-  return(
-    list(
-      activities  =  activities,
-      fires =  fires,
-      fires_fires = fires_fires,
-      fires_activities  =  fires_activities,
-      intersecting  =  intersecting,
-      not_intersecting  =  not_intersecting,
-      missing_intersecting  =  missing_intersecting
-    )
-  )
+  return(final_result)
 }
-
 
 # Function for summarizing fires_activities for overlapping fires
 assign_activities <- function(fires_activities, fires){
@@ -303,7 +307,7 @@ fires$Ig_Year = as.numeric(as.character(fires$Ig_Year))
 fires = fires %>%
   # mutate(Ig_Year = year(Ig_Date)) %>%
   filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year > 1993 & Ig_Year < 2020)
+  filter(Ig_Year > 1993)
 
 fires <- prepare_fires(fires,nfs_r5)
 
@@ -321,7 +325,7 @@ facts <- facts[,keep]
 facts <- prepare_facts(facts)
 
 #### Conduct intersection and assign activities ####
-facts_fires <- intersect_activities(facts,fires,precision=100,10)
+facts_fires <- intersect_activities(facts, fires, precision=10, cores=10, chunk_size=10000)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
 

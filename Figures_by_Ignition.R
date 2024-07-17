@@ -47,10 +47,10 @@ new_labels = data.frame(ACTIVITY_TYPE = c("Certified_Planted","Fuels","Plant","S
       "Survey_Stocking","TSI","Harvest_NonSalv","Replant","Silv_Prescription","SitePrep_NonChem",
       "Thin","Harvest_Salvage","Need_by_Fire","Survey_Other","Survey_Pretreatment",
       "SitePrep_Chem","Survey_Survival","Prune","Need_by_Failure","Certified_TSI"),
-type_labels = c("Plant Certification","Fuel Reduction","Plant Trees","Stand Exam",
-      "Stocking Survey","TSI","Harvest - Non-Salvage","Replant/Fill-in","Silvicultural Prescription","Site Prep (Manual)",
+type_labels = c("Certification - Plant","Fuel Reduction","Plant Trees","Stand Exam",
+      "Stocking Survey","TSI","Harvest - Non-Salvage","Replant/Fill-in","Silvicultural Prescription","Site Prep - Manual",
       "Thin","Harvest - Salvage","Reforestation Need (Fire)","Survey (Other)","Survey (Pretreatment)",
-      "Site Prep - Chemical","Survival Survey","Prune","Reforestation Need (Failure)","TSI Certification"))
+      "Site Prep - Chemical","Survival Survey","Prune","Reforestation Need (Failure)","Certification - TSI"))
 
 gross_net_cumulative = merge(gross_net_cumulative, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
 gross_net_cumulative_5years = merge(gross_net_cumulative_5years, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
@@ -83,7 +83,55 @@ ggplot() +
 # guides(fill="none")
 dev.off()
 
+jpeg(filename = "combined_cumulative_treat.jpg",
+     width = 900, height = 600,
+     quality = 75,
+     bg = "white",
+     symbolfamily="default")
 
+ggplot() +
+  theme_bw() +
+  geom_area(data = combined_cumulative_treat, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"), alpha = 0.9) +
+  geom_area(data = combined_cumulative_treat, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"), alpha = 0.9) +
+  geom_line(data = combined_cumulative_treat_5years, 
+            aes(x = end, y = gross_area_ac, color = "Gross Acres <= 5 Years Postfire"), linewidth = 1.25) +
+  geom_line(data = combined_cumulative_treat_5years, 
+            aes(x = end, y = net_area_ac, color = "Net Acres <= 5 Years Postfire"), linewidth = 1.25) +
+  ggtitle("R5 Postfire Reforestation - Treatment Acres Completed by Ignition Year") +
+  labs(x = "Ignition Year", y = "Treatment Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 6)) +
+  facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
+  scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres <= 5 Years Postfire" = "blue", "Net Acres <= 5 Years Postfire" = "red")) +
+  theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=22), text = element_text(size=18)) +
+  guides(fill=guide_legend(title=NULL, nrow=1), color=guide_legend(title=NULL, nrow=1))
+
+dev.off()
+
+jpeg(filename = "combined_cumulative_monitor.jpg",
+     width = 900, height = 600,
+     quality = 75,
+     bg = "white",
+     symbolfamily="default")
+
+ggplot() +
+  theme_bw() +
+  geom_area(data = combined_cumulative_monitor, aes(x = end, y = gross_area_ac, fill = "Gross Acres to Date"), alpha = 0.9) +
+  geom_area(data = combined_cumulative_monitor, aes(x = end, y = net_area_ac, fill = "Net Acres to Date"), alpha = 0.9) +
+  geom_line(data = combined_cumulative_monitor_5years, 
+            aes(x = end, y = gross_area_ac, color = "Gross Acres <= 5 Years Postfire"), linewidth = 1.25) +
+  geom_line(data = combined_cumulative_monitor_5years, 
+            aes(x = end, y = net_area_ac, color = "Net Acres <= 5 Years Postfire"), linewidth = 1.25) +
+  ggtitle("R5 Postfire Reforestation - Monitoring Acres Completed by Ignition Year") +
+  labs(x = "Ignition Year", y = "Treatment Acres") +
+  scale_x_continuous(breaks = seq(1990, 2020, 6)) +
+  facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
+  scale_fill_manual(values = c("Gross Acres to Date" = "darkgray", "Net Acres to Date" = "lightgray")) +
+  scale_color_manual(values = c("Gross Acres <= 5 Years Postfire" = "blue", "Net Acres <= 5 Years Postfire" = "red")) +
+  theme(legend.position="bottom", legend.box = "horizontal", plot.title = element_text(size=22), text = element_text(size=18)) +
+  guides(fill=guide_legend(title=NULL, nrow=1), color=guide_legend(title=NULL, nrow=1))
+
+dev.off()
 
 
 gross_net_ignition_15years = readRDS("gross_net_ignition_15years.RDS")
