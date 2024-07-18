@@ -171,23 +171,31 @@ prepare_facts <- function(facts){
 
 ## ORIGINAL VERSION ##
 # Function to self intersect fire polygons
-self_intersect <- function(polygons, precision=0.0001, area_threshold=0){
+self_intersect <- function(polygons, precision=100, area_threshold=0){
 
-  # polygons <- rbind(fires[fires$Ig_Year>=2018,c("Ig_Year","Incid_Name","Event_ID")],
-  #                   fires2[,c("Ig_Year","Incid_Name","Event_ID")])
-  # 
-  # 
-  # polygons <- fires2
-  polygons<-st_make_valid(polygons)
   polygons <- st_buffer(polygons,0)
   polygons <- st_cast(polygons,"MULTIPOLYGON")
+  polygons<-st_make_valid(polygons)
+  polygons_a <- polygons[polygons$Ig_Year<2014,]
+  polygons_b <- polygons[!polygons$Ig_Year<2014,]
+  polygons <- rbind(polygons_a,polygons_b)
+  polygons<-st_make_valid(polygons)
+  polygons <- st_buffer(polygons,0)
+  # polygons <- group_split(polygons,Ig_Year)
+  # polygons <- lapply(polygons,function(x){
+  #   res<-st_make_valid(x)
+  #   res[st_is_valid(res),]
+  # })
+  # polygons <- do.call(rbind,polygons)
+  
+  polygons<-st_make_valid(polygons)
   if(!is.null(precision)){
-    st_precision(polygons)<-10
+    st_precision(polygons)<-precision
   }
   polygons<-st_make_valid(polygons)
   polygons<-polygons[st_is_valid(polygons),]
-  
   polygons<- st_intersection(polygons)
+  
   
   
   polygons <- polygons[st_dimension(polygons)==2,]
@@ -467,7 +475,7 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
 
 nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires2 = st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+fires = st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 facts <- st_read("../../Data/facts_r5.shp")
 
 # fires <- st_read(dsn = "../../Data/Severity/S_USA.FirePerimeterFinal-selected/S_USA.FirePerimeterFinal.shp", stringsAsFactors = FALSE)
@@ -501,7 +509,7 @@ facts <- prepare_facts(facts)
 
 
 #### Conduct intersection and assign activities ####
-facts_fires <- intersect_activities(facts, fires, precision=1, cores=10)
+facts_fires <- intersect_activities(facts, fires, precision=100, cores=10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
 
