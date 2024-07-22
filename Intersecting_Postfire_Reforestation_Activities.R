@@ -6,6 +6,7 @@ library("mapview")
 library("lubridate")
 library("foreach")
 library("doParallel")
+library("units")
 
 # Define fields to keep from the FACTS database
 keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
@@ -14,13 +15,12 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
 
 # Define reforestation management categories ####
 Certified_Planted <- "Certification-Planted"
-Certified_Thin = "TSI Certification - Thinning"
-Certified_TSI = c("TSI Certification - Release/weeding",
-                  "TSI Certification - Fertilizaiton", 
-                  "TSI Certification - Cleaning", "TSI Certification - Pruning")
-Fuels <- c("Piling of Fuels, Hand or Machine","Burning of Piled Material","Yarding - Removal of Fuels by Carrying or Dragging",
-           "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Underburn - Low Intensity (Majority of Unit)",
-           "Broadcast Burning - Covers a majority of the unit") 
+Certified_TSI_Release = "TSI Certification - Release/weeding"
+Certified_TSI_Thin = "TSI Certification - Thinning"
+Fuels_Fire <- c("Burning of Piled Material","Underburn - Low Intensity (Majority of Unit)",
+           "Broadcast Burning - Covers a majority of the unit")
+Fuels_Other <- c("Piling of Fuels, Hand or Machine","Yarding - Removal of Fuels by Carrying or Dragging",
+                "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Thinning for Hazardous Fuels Reduction")
 Harvest_NonSalv = c("Stand Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
                     "Sanitation Cut","Group Selection Cut (UA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
                     "Seed-tree Seed Cut (with and without leave trees) (EA/RH/NFH)")
@@ -28,27 +28,29 @@ Harvest_Salvage <- c("Salvage Cut (intermediate treatment, not regeneration)")
 Need_by_Failure = "Reforestation Need created by Regeneration Failure"
 Need_by_Fire = "Reforestation Need Created by Fire"
 Plant <- "Plant Trees"
-Prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune") 
 Replant <- "Fill-in or Replant Trees"
 SitePrep_Chem = "Site Preparation for Planting - Chemical"
-SitePrep_NonChem <- c("Site Preparation for Planting - Mechanical","Site Preparation for Planting - Manual",
-                      "Site Preparation for Planting - Burning","Site Preparation for Planting - Other")
+SitePrep_Mech <- c("Site Preparation for Planting - Mechanical")
+SitePrep_Other = c("Site Preparation for Planting - Manual","Site Preparation for Planting - Burning",
+                   "Site Preparation for Planting - Other")
 Stand_Exam = c("Silvicultural Stand Examination", "Low Intensity Stand Examination")
 Survey_Stocking <- "Stocking Survey"
 Survey_Survival = "Plantation Survival Survey"
 Survey_Other = c("Vegetative Competition Survey","Post Treatment Vegetation Monitoring", "Stand Diagnosis Prepared")
 Survey_Pretreatment = c("Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation")
 Silv_Prescription = "Stand Silviculture Prescription"
-Thin <- c("Precommercial Thin","Commercial Thin","Thinning for Hazardous Fuels Reduction","Single-tree Selection Cut (UA/RH/FH)") 
-TSI <- c("Tree Release and Weed","Control of Understory Vegetation","Reforestation Enhancement")
+TSI_Thin <- c("Precommercial Thin","Commercial Thin","Single-tree Selection Cut (UA/RH/FH)") 
+TSI_Release <- c("Tree Release and Weed", "Control of Understory Vegetation")
+TSI_Prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune")
 
-types = c("Certified_Planted","Certified_Thin","Certified_TSI","Fuels","Harvest_NonSalv","Harvest_Salvage",
-          "Need_by_Failure","Need_by_Fire","Plant","Prune","Replant","SitePrep_Chem","SitePrep_NonChem",
-          "Stand_Exam","Survey_Other","Survey_Pretreatment","Survey_Stocking","Survey_Survival",
-          "Silv_Prescription","Thin","TSI")
-treat = c(Fuels,Harvest_NonSalv,Harvest_Salvage,Prune,Replant,
-          SitePrep_Chem,SitePrep_NonChem,Thin,TSI)
-monitor = c(Certified_Planted,Certified_Thin,Certified_TSI,Need_by_Failure,Need_by_Fire,Stand_Exam,
+types = c("Certified_Planted","Certified_TSI_Thin","Certified_TSI_Release","Fuels_Fire","Fuels_Other",
+          "Harvest_NonSalv","Harvest_Salvage","Need_by_Failure","Need_by_Fire","Plant","Replant",
+          "SitePrep_Chem","SitePrep_NonChem","SitePrep_Other", "Stand_Exam","Survey_Other","Survey_Pretreatment",
+          "Survey_Stocking","Survey_Survival","Silv_Prescription","TSI_Prune","TSI_Release","TSI_Thin")
+
+treat = c(Fuels_Fire,Fuels_Other,Harvest_NonSalv,Harvest_Salvage,Replant,
+          SitePrep_Chem,SitePrep_NonChem,Thin,TSI_Prune,TSI_Release,TSI_Thin)
+monitor = c(Certified_Planted,Certified_TSI_Thin,Certified_TSI_Release,Need_by_Failure,Need_by_Fire,Stand_Exam,
             Survey_Other,Survey_Pretreatment,Survey_Stocking,Survey_Survival,Silv_Prescription)
 manage <- c(Plant,treat,monitor)
 manage.except.plant = manage[manage != Plant]
@@ -195,7 +197,6 @@ self_intersect <- function(polygons, precision=100, area_threshold=0){
   polygons<-st_make_valid(polygons)
   polygons<-polygons[st_is_valid(polygons),]
   polygons<- st_intersection(polygons)
-  
   
   
   polygons <- polygons[st_dimension(polygons)==2,]
@@ -474,9 +475,9 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
 
-nfs_r5 = st_read(dsn = "../../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires = st_read(dsn = "../../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
-facts <- st_read("../../Data/facts_r5.shp")
+nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+facts <- st_read("../Data/facts_r5.shp")
 
 # fires <- st_read(dsn = "../../Data/Severity/S_USA.FirePerimeterFinal-selected/S_USA.FirePerimeterFinal.shp", stringsAsFactors = FALSE)
 # fires <- fires %>% rename(Ig_Year="FIREYEAR",
@@ -486,11 +487,9 @@ facts <- st_read("../../Data/facts_r5.shp")
 
 # fires$Ig_Date<- as.Date(fires$Ig_Date)
 fires = fires %>%
-  mutate(Ig_Year = year(Ig_Date)) %>%
   mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
   filter(Incid_Type == "Wildfire") %>%
-  filter(BurnBndAc>1000)%>%
-  filter(Ig_Year>1993&Ig_Year<2023)
+  filter(Ig_Year>1992)
 
 fires <- prepare_fires(fires,nfs_r5)
 
@@ -498,7 +497,7 @@ fires <- prepare_fires(fires,nfs_r5)
 
 # Filter out activities completed before study period
 facts <- facts %>%
-  filter(FISCAL_Y_2 > 1993)
+  filter(FISCAL_Y_2 > 1992 & FISCAL_Y_2 < 2023)
 
 # Keep only reforestation-related activities and important fields
 facts <- facts[facts$ACTIVITY %in% manage,]
@@ -522,17 +521,16 @@ facts = readRDS("prepared_facts.RDS")
 
 saveRDS(facts_fires,"facts_fires_2024.RDS")
 
-facts_fires <- readRDS("facts_fires_2024.RDS")
+# facts_fires <- readRDS("facts_fires_2024.RDS")
+facts_fires = readRDS("../Data/facts_fires_raw_07_24.RDS")
 
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
 
 # CLEANING ASSIGNED ACTIVITIES
-assigned_activities = unite(assigned_activities, "vb_id", Ig_Year:Incid_Name, remove = FALSE)
-  
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
 
-assigned_activities <- assigned_activities[,c(keep,"vb_id","activity_area","facts_polygon_id","year","assigned_fire"),]
+assigned_activities <- assigned_activities[,c(keep,"Event_ID","activity_area","facts_polygon_id","year","assigned_fire"),]
 
 assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by.x="assigned_fire",by.y="Event_ID")
 
@@ -592,6 +590,23 @@ for(i in types){
   assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat,i,assigned_activities$ACTIVITY_TYPE)
 } 
 
+new_labels = data.frame(
+  ACTIVITY_TYPE = c("Certified_Planted", "Certified_TSI_Thin", "Certified_TSI_Release", "Fuels_Fire", "Fuels_Other", 
+                    "Harvest_NonSalv", "Harvest_Salvage", "Need_by_Failure", "Need_by_Fire", "Plant", 
+                    "Replant", "SitePrep_Chem", "SitePrep_NonChem", "SitePrep_Other", "Stand_Exam", 
+                    "Survey_Other", "Survey_Pretreatment", "Survey_Stocking", "Survey_Survival", 
+                    "Silv_Prescription", "TSI_Prune", "TSI_Release", "TSI_Thin"),
+  type_labels = c("Certified - Plant", "Certified - Thin", "Certified - Release", 
+                  "Fuel Reduction (Fire)", "Fuel Reduction (Other)", "Harvest - Non-Salvage", "Harvest - Salvage", 
+                  "Reforestation Need (Failure)", "Reforestation Need (Fire)", "Plant Trees", 
+                  "Fill-in or Replant Trees", "Site Prep - Chemical", "Site Prep - Non-Chemical", "Site Prep - Other", 
+                  "Stand Exam", "Survey (Other)", "Survey (Pretreatment)", "Stocking Survey", "Survival Survey", 
+                  "Silvicultural Prescription", "TSI - Prune", "TSI - Release", "TSI - Thin")
+)
+
+# Merge the new labels with assigned_activities
+assigned_activities = merge(assigned_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
+saveRDS(assigned_activities,"assigned_activities_2024.RDS")
 
 
 #### Create plant year field ####
@@ -606,22 +621,28 @@ process_assigned_activities <- function(assigned_activities) {
     plant_data <- group_data %>% filter(IS_Plant == TRUE)
     non_plant_data <- group_data %>% filter(IS_Plant == FALSE)
     
-    if (nrow(plant_data) > 0 && nrow(non_plant_data) > 0) {
-      intersections <- st_intersects(non_plant_data, plant_data)
+    if (nrow(plant_data) > 0) {
+      plant_data$plant_year <- plant_data$year  # Assign plant_year for plantings
       
-      non_plant_data$plant_year <- sapply(intersections, function(x) {
-        if (length(x) > 0) {
-          return(plant_data$year[x[1]])
-        } else {
-          return(NA)
-        }
-      })
+      if (nrow(non_plant_data) > 0) {
+        intersections <- st_intersects(non_plant_data, plant_data)
+        
+        non_plant_data$plant_year <- sapply(intersections, function(x) {
+          if (length(x) > 0) {
+            return(max(plant_data$year[x]))  # Use max() to get the most recent year
+          } else {
+            return(NA)
+          }
+        })
+      }
     } else {
-      non_plant_data$plant_year <- NA
+      if (nrow(non_plant_data) > 0) {
+        non_plant_data$plant_year <- NA
+      }
     }
     
     result <- bind_rows(plant_data, non_plant_data)
-
+    return(result)
   }
   
   # Process each group
@@ -650,25 +671,69 @@ process_assigned_activities <- function(assigned_activities) {
 processed_activities <- process_assigned_activities(assigned_activities)
 
 
+#### Calculate proportions ####
 
-## Different method
+calculate_treatment_proportions <- function(data, select_treatments, type_labels) {
+  
+  # Calculate net acres for each treatment and plantation
+  net_acres <- data %>%
+    filter(type_labels %in% c(select_treatments, "Plant Trees")) %>%
+    group_by(plant_year, Event_ID, type_labels) %>%
+    summarise(
+      geometry = st_union(geometry),
+      .groups = "drop"
+    ) %>%
+    mutate(net_acres = st_area(geometry)/4046.86)
+  
+  # Calculate plantation areas
+  plantation_areas <- net_acres %>%
+    filter(type_labels == "Plant Trees") %>%
+    group_by(plant_year) %>%
+    summarise(
+      plantation_geometry = st_union(geometry),
+      plantation_area_acres = sum(net_acres),
+      plantations_count = n(),
+      .groups = "drop") %>%
+    st_as_sf()
+  
+  # Calculate treatment areas and their intersection with plantations
+  treatment_areas <- net_acres %>%
+    filter(type_labels %in% select_treatments) %>%
+    group_by(plant_year, type_labels) %>%
+    summarise(
+      treatment_geometry = st_union(geometry),
+      treatment_area_acres = sum(net_acres),
+      fires_treated = n_distinct(Event_ID),
+      treatment_count = n(),
+      .groups = "drop") %>%
+    st_as_sf()
+    
+  treatment_areas %>%
+    st_join(plantation_areas, join = st_intersects, left = FALSE) %>%
+    mutate(
+      intersection_acres = st_area(st_intersection(plantation_areas$plantation_geometry, treatment_geometry)/4046.86),
+      prop_of_plantation_area = intersection_acres / plantation_area$plantation_area_acres
+    ) %>%
+    select(-treatment_geometry) %>%  # Remove the duplicate geometry column
+    st_drop_geometry()  # Now we can safely drop the geometry
+  
+  # Combine results
+  result <- treatment_areas %>%
+    select(plant_year, type_labels, treatment_count, fires_treated, treatment_area_acres, 
+           plantation_area_acres, plantations_count, prop_of_plantation_area) %>%
+    pivot_wider(
+      id_cols = c(plant_year, plantation_area_acres, plantations_count),
+      names_from = type_labels,
+      values_from = c(treatment_count, fires_treated, treatment_area_acres, prop_of_plantation_area),
+      values_fill = list(treatment_count = 0, fires_treated = 0, treatment_area_acres = 0, prop_of_plantation_area = 0)
+    ) %>%
+    arrange(plant_year)
+  
+  return(result)
+}
 
-# Subset assigned_activities into two data frames based on IS_Plant
-plant_ <- assigned_activities[assigned_activities$IS_Plant == TRUE, ]
-non_plant <- assigned_activities[assigned_activities$IS_Plant == FALSE, ]
-
-# Perform spatial intersection between plant_df and non_plant_df
-intersected_plant_non <- sf::st_intersection(plant, non_plant)
-
-# Add a new field "plant_year" to non_plant_df and populate it with the "year" field from the plant data frame
-non_plant$plant_year <- plant$year[match(intersected_plant_non$CRC_VALUE, plant$CRC_VALUE)]
-
-# Join back to assigned_activities by CRC_VALUE
-result <- merge(assigned_activities, non_plant, by = "CRC_VALUE", all.x = TRUE)
-
-
-saveRDS(assigned_activities,"assigned_activities_2024.RDS")
-
+select_treatments <- c("Stocking Survey", "Survival Survey", "Certified - Plant", "TSI - Release", "Fill-in or Replant Trees")
+treatment_proportions <- calculate_treatment_proportions(processed_activities, select_treatments, type_labels)
 
 
 #### TODO: ####
