@@ -49,7 +49,7 @@ types = c("Certified_Planted","Certified_TSI_Thin","Certified_TSI_Release","Fuel
           "Survey_Stocking","Survey_Survival","Silv_Prescription","TSI_Prune","TSI_Release","TSI_Thin")
 
 treat = c(Fuels_Fire,Fuels_Other,Harvest_NonSalv,Harvest_Salvage,Replant,
-          SitePrep_Chem,SitePrep_NonChem,Thin,TSI_Prune,TSI_Release,TSI_Thin)
+          SitePrep_Chem,SitePrep_Mech,TSI_Prune,TSI_Release,TSI_Thin)
 monitor = c(Certified_Planted,Certified_TSI_Thin,Certified_TSI_Release,Need_by_Failure,Need_by_Fire,Stand_Exam,
             Survey_Other,Survey_Pretreatment,Survey_Stocking,Survey_Survival,Silv_Prescription)
 manage <- c(Plant,treat,monitor)
@@ -175,14 +175,14 @@ prepare_facts <- function(facts){
 # Function to self intersect fire polygons
 self_intersect <- function(polygons, precision=100, area_threshold=0){
 
-  polygons <- st_buffer(polygons,0)
-  polygons <- st_cast(polygons,"MULTIPOLYGON")
-  polygons<-st_make_valid(polygons)
-  polygons_a <- polygons[polygons$Ig_Year<2014,]
-  polygons_b <- polygons[!polygons$Ig_Year<2014,]
-  polygons <- rbind(polygons_a,polygons_b)
-  polygons<-st_make_valid(polygons)
-  polygons <- st_buffer(polygons,0)
+  # polygons <- st_buffer(polygons,0)
+  # polygons <- st_cast(polygons,"MULTIPOLYGON")
+  # polygons<-st_make_valid(polygons)
+  # polygons_a <- polygons[polygons$Ig_Year<2014,]
+  # polygons_b <- polygons[!polygons$Ig_Year<2014,]
+  # polygons <- rbind(polygons_a,polygons_b)
+  # polygons<-st_make_valid(polygons)
+  # polygons <- st_buffer(polygons,0)
   # polygons <- group_split(polygons,Ig_Year)
   # polygons <- lapply(polygons,function(x){
   #   res<-st_make_valid(x)
@@ -190,12 +190,12 @@ self_intersect <- function(polygons, precision=100, area_threshold=0){
   # })
   # polygons <- do.call(rbind,polygons)
   
-  polygons<-st_make_valid(polygons)
+  # polygons<-st_make_valid(polygons)
   if(!is.null(precision)){
     st_precision(polygons)<-precision
   }
   polygons<-st_make_valid(polygons)
-  polygons<-polygons[st_is_valid(polygons),]
+  # polygons<-polygons[st_is_valid(polygons),]
   polygons<- st_intersection(polygons)
   
   
@@ -271,7 +271,7 @@ intersect_activities <- function(activities, fires, precision, cores){
   })
 
 
-  on.exit(try(stopCluster(cl)))
+  # on.exit(try(stopCluster(cl)))
 
   fires_activities <- foreach(
     x = result_parts,
@@ -512,6 +512,7 @@ facts_fires <- intersect_activities(facts, fires, precision=100, cores=10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
 
+setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output/")
 
 saveRDS(fires, "prepared_fires.RDS")
 saveRDS(facts, "prepared_facts.RDS")
@@ -521,11 +522,13 @@ facts = readRDS("prepared_facts.RDS")
 
 saveRDS(facts_fires,"facts_fires_2024.RDS")
 
-# facts_fires <- readRDS("facts_fires_2024.RDS")
-facts_fires = readRDS("../Data/facts_fires_raw_07_24.RDS")
+facts_fires <- readRDS("facts_fires_2024_kelly.RDS")
+facts_fires = readRDS("facts_fires_2024.RDS")
 
 assigned_activities <- facts_fires$assigned_activities
 fires <- facts_fires$fires
+
+assigned_activities = read("assigned_activities.RDS")
 
 # CLEANING ASSIGNED ACTIVITIES
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
