@@ -58,9 +58,8 @@ manage.except.plant = manage[manage != Plant]
 
 # Function to prepare fire layer
 prepare_fires <- function(fires, nfs_r5) {
-  # Transform CRS
-  # fires <- st_transform(fires, crs = 5070)
-  # nfs_r5 <- st_transform(nfs_r5, crs = 5070)
+  print("Initial class:")
+  print(class(fires))
   
   
   # Ensure valid geometries and filter for polygons
@@ -68,32 +67,51 @@ prepare_fires <- function(fires, nfs_r5) {
     st_make_valid() %>%
     filter(st_is_valid(.), st_dimension(.) == 2)
   
-  # Group and summarize fire data
-  fires <- fires %>%
-    group_by(Event_ID) %>%
-    summarize(
-      geometry = st_union(geometry),
-      Ig_Year = first(Ig_Year),
-      nIg_Years = n_distinct(Ig_Year),
-      Incid_Name = first(Incid_Name),
-      nIncid_Name = n_distinct(Incid_Name),
-      sumBurnBndAc = sum(BurnBndAc),
-      sumFire_Acres = sum(BurnBndAc)
-    ) %>%
-    ungroup()
+  print("After validation and filtering:")
+  print(class(fires))
   
-
+  # # Group and summarize fire data
+  # fires <- fires %>%
+  #   group_by(Event_ID) %>%
+  #   summarize(
+  #     geometry = st_union(geometry),
+  #     Ig_Year = first(Ig_Year),
+  #     nIg_Years = n_distinct(Ig_Year),
+  #     Incid_Name = first(Incid_Name),
+  #     nIncid_Name = n_distinct(Incid_Name),
+  #     sumBurnBndAc = sum(BurnBndAc),
+  #     sumFire_Acres = sum(BurnBndAc)
+  #   ) %>%
+  #   ungroup()
+  
+  # print("After grouping and summarizing:")
+  # print(class(fires))
+  
+  # fires = st_as_sf(fires)
+  
+  print("after st_as_sf:")
+  print(class(fires))
+  
+  # Transform CRS
   fires <- st_transform(fires, crs = 5070)
   nfs_r5 <- st_transform(nfs_r5, crs = 5070)
+  
+  print("After CRS transformation:")
+  print(class(fires))
   
   # Clip fires to R5 NF layer
   nfs_r5_union <- st_union(nfs_r5)
   fires <- st_intersection(fires, nfs_r5_union)
   
+  print("After intersection:")
+  print(class(fires))
+  
   # Add fire area
   fires$fire_area <- st_area(fires)
   
-  # fires <- st_transform(fires, crs = 3310)
+  print("Final class:")
+  print(class(fires))
+  
   return(fires)
 }
 
@@ -489,11 +507,45 @@ facts <- st_read("../Data/facts_r5.shp")
 fires = fires %>%
   mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
   filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year>1992)
+  filter(Ig_Year>1993 & Ig_Year < 2023)
 
 fires <- prepare_fires(fires,nfs_r5)
 
 
+## Self-intersect with unioned fire layer across geographic chunks ####
+
+# Union
+fires_union = st_union(fires)
+fires_union = st_as_sf(fires_union)
+
+# Break multipolygon into single polygons
+fires_union = st_cast(fires_union, "POLYGON")
+fires_union = st_buffer(fires_union, -0.01)
+
+# Find intersects with original fire layer
+# check = st_intersection(fires_union)
+
+# add id column, group split union_sf by id
+fires_union$group_id = 1:nrow(fires_union)
+fires_split = fires_union %>%
+  group_split(group_id)
+
+
+fire_groups = lapply(fires_split, function(
+    chunk, fires2 = fires){
+  
+  chunk_int = st_intersects(fires2, chunk, sparse = FALSE)[,1]
+  
+  print("intersected chunk:")
+  print(chunk$group_id)
+  
+  fire_intersects = fires2[chunk_int,]
+  
+  fire_intersects = try(st_intersection(fire_intersects))
+  
+  return(fire_intersects)
+  
+})
 
 # Filter out activities completed before study period
 facts <- facts %>%
