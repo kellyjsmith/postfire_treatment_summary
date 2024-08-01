@@ -7,18 +7,18 @@ library(tidyverse)
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 setwd("~/Library/CloudStorage/Box-Box/Kelly_postfire_reforestation_project/Output")
 
-assigned_activities_df = readRDS("assigned_activities_2024.RDS") %>%
+facts_df = readRDS("intersected_activities_02_22.RDS") %>%
+  st_drop_geometry()
+assigned_activities = readRDS("assigned_activities_02_22.RDS")
+assigned_df = readRDS("assigned_activities_02_22.RDS") %>%
+  st_drop_geometry()
+# combined_df = readRDS("combined_by_fire.RDS")
+combined_df = combined_ignition_year %>%
   st_drop_geometry()
 combined_ignition_year = readRDS("combined_ignition_year.RDS")
   st_drop_geometry()
 combined_5yr_df = readRDS("combined_ignition_year_5yr.RDS") %>%
   st_drop_geometry()
-
-units(combined_df$gross_acres) <- NULL
-units(combined_df$net_acres) <- NULL
-units(combined_5yr_df$net_acres) <- NULL
-
-
 
 
 # # Summarize total and postfire activity acres by all activities and types
@@ -34,28 +34,30 @@ units(combined_5yr_df$net_acres) <- NULL
 
 
 # Summarize activity_area by ACTIVITY_TYPE for facts_df
-facts_acres <- assigned_df %>%
-  group_by(type_labels) %>%
-  summarise("Total FACTS Acres" = sum(GIS_ACRES, na.rm = TRUE))
+facts_acres <- facts_df %>%
+  group_by(big_groups) %>%
+  summarise(n_types = n_distinct(type_labels),
+            "Total FACTS Acres" = sum(GIS_ACRES, na.rm = TRUE))
 
-gross_postfire_acres <- combined_df %>%
-  group_by(type_labels) %>%
-  summarise("Gross Postfire Acres" = sum(gross_acres, na.rm = TRUE))
+gross_postfire_acres <- assigned_df %>%
+  group_by(big_groups) %>%
+  summarise("Total (Gross) Postfire Acres" = sum(as.numeric(activity_fire_area/4046.86, na.rm = TRUE)))
 
 net_postfire_acres <- combined_df %>%
-  group_by(type_labels) %>%
+  group_by(big_groups) %>%
   summarise("Net Postfire Acres" = sum(net_acres, na.rm = TRUE))
 
-net_postfire_acres_5yr = combined_5yr_df %>%
-  group_by(type_labels) %>%
-  summarize("Net Acres <= 5 Yrs" = sum(net_acres, na.rm = TRUE))
+# net_postfire_acres_5yr = combined_df %>%
+#   group_by(big_groups) %>%
+#   filter(diff_years <= 5) %>%
+#   summarize("Net Acres <= 5 Yrs" = sum(net_acres, na.rm = TRUE))
 
 
 # Combine the four tables
-combined_acreage_summary <- full_join(facts_acres, gross_postfire_acres, by = "type_labels") %>%
-  full_join(net_postfire_acres, by = "type_labels") %>%
-  full_join(net_postfire_acres_5yr, by = "type_labels")
-write.csv(combined_acreage_summary, "combined_acreage_summary.csv")
+combined_acreage_summary <- full_join(facts_acres, gross_postfire_acres, by = "big_groups") %>%
+  full_join(net_postfire_acres, by = "big_groups")
+  # full_join(net_postfire_acres_5yr, by = "big_groups")
+write.csv(combined_acreage_summary, "combined_acreage_summary_big.csv")
 
 fire_summary = combined_ignition_year %>%
   filter(type_labels == "Plant Trees") %>%
@@ -63,60 +65,70 @@ fire_summary = combined_ignition_year %>%
   summarize(total_net = sum(net_acres))
 
 
-
-# Certification summaries
-plant_cert_prop = gross_net_time %>%
-  filter(ACTIVITY_TYPE %in% c("Plant","Cert_Planted")) %>%
-  pivot_wider(id_cols = c("start", "end"),
-              names_from = "ACTIVITY_TYPE",
-              values_from = "net_area")
+plant_year_summary = assigned_activities %>%
+  filter(type_labels == "Plant Trees") %>%
+  group_by(Ig_Year, Incid_Name, diff_years, type_labels) %>%
+  summarize(total_acres = as.numeric(sum(activity_fire_area) / 4046.86))
 
 
-plant_only = assigned_df %>%
-  filter(ACTIVITY_TYPE == "Plant")
-plant_cert_only = assigned_df %>%
-  filter(ACTIVITY_TYPE == "Certified_Planted")
-plant_cert_merge_allcert = merge(plant_only,plant_cert_only,
-                             by = "SUID",
-                             all.x = FALSE, all.y = TRUE)
-plant_cert_merge_allplant = merge(plant_only,plant_cert_only,
-                                 by = "SUID",
-                                 all.x = TRUE, all.y = FALSE)
-not_certified = plant_cert_merge_allplant %>%
-  filter(ACTIVITY.y = NA)
-
-
-analyze_certification <- function(data) {{
+analyze_proportions <- function(data) {
   
-  #Split data frame
-  plant = data %>% filter(type_labels == "Plant Trees")
-  cert = data %>% filter(type_labels == "Certified - Plant")
+  # Ensure valid geometries
+  data <- st_make_valid(data)
   
-  plantcert <- st_join(st_as_sf(plant), st_as_sf(cert), join = st_intersects, suffix = c("_plant", "_cert"))
+  # Separate plant data
+  plant <- data %>% filter(IS_Plant == TRUE)
   
-  result <- plantcert %>%
-    group_by(Ig_Year_plant,Event_ID_plant) %>%
+  # List of activity types to join
+  activity_types <- c("Certification - Plant", "Fill-in or Replant Trees", 
+                      "TSI - Release", "Stocking Survey", "TSI - Thin")
+  
+  # Initialize result dataframe
+  result <- plant %>%
+    group_by(Ig_Year, Incid_Name) %>%
+    summarise(
+      acres_burned_r5 = first(as.numeric(fire_area)/4046.86),
+      planted_acres_gross = sum(as.numeric(st_area(geometry))/4046.86, na.rm = TRUE),
+      planted_acres_net = as.numeric(st_area(st_union(geometry)))/4046.86,
+      prop_planted = planted_acres_net / first(BurnBndAc),
+      .groups = "drop"
+    )
+  
+  # Perform spatial join for each activity type
+  for (activity in activity_types) {
+    activity_data <- data %>% 
+      filter(type_labels == activity) %>%
+      mutate(geometry_activity = geometry)
+    
+    tryCatch({
+      joined <- st_join(plant, activity_data, suffix = c("_plant","_activity")) %>%
+        group_by(Ig_Year_plant, Incid_Name_plant) %>%
         summarise(
-          total_planted_acres = sum(activity_area_plant/4046.86),
-          certified_acres = sum(!is.na(SUID_cert), activity_area_cert/4046.86),
-          prop_certified = certified_acres / total_planted_acres,
+          activity_acres_gross = sum(as.numeric(st_area(geometry_activity))/4046.86, na.rm = TRUE),
+          activity_acres_net = as.numeric(st_area(st_union(geometry_activity)))/4046.86,
+          .groups = "drop"
         )
-    }
+      
+      # Add to result
+      col_name <- tolower(gsub(" - | ", "_", activity))
+      result[[paste0(col_name, "_acres_gross")]] <- joined$activity_acres_gross
+      result[[paste0(col_name, "_acres_net")]] <- joined$activity_acres_net
+      result[[paste0("prop_", col_name)]] <- joined$activity_acres_net / result$planted_acres_net
+    }, error = function(e) {
+      warning(paste("Error processing", activity, ":", e$message))
+      # Add columns with NA values if join fails
+      col_name <- tolower(gsub(" - | ", "_", activity))
+      result[[paste0(col_name, "_acres_gross")]] <- NA
+      result[[paste0(col_name, "_acres_net")]] <- NA
+      result[[paste0("prop_", col_name)]] <- NA
+    })
+  }
   
-  # Visualization
-  plot <- ggplot(result, aes(x = plant_year, y = prop_certified, fill = "Certified")) +
-    geom_bar(stat = "identity", width = 1) +
-    geom_bar(aes(y = prop_not_certified, fill = "Not Certified"), stat = "identity", width = 1) +
-    coord_polar("y", start = 0) +
-    theme_void() +
-    scale_fill_manual(values = c("Certified" = "green", "Not Certified" = "red")) +
-    labs(title = "Proportion of Certified Plantings")
-  
-  list(result = result, plot = plot)
+  return(result)
 }
 
 # Usage
-results <- analyze_certification(assigned_activities)
-print(results$result)
-print(results$plot)
-
+activity_proportions <- analyze_proportions(assigned_activities)
+print(activity_proportions)
+print(activity_proportions)
+write.csv(activity_proportions,"activity_proportions.csv")
