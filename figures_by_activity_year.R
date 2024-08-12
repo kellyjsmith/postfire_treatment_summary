@@ -14,9 +14,10 @@ combined_by_fire_monitor = readRDS("combined_by_fire_monitor.RDS")
 combined_activity_year_treat = readRDS("combined_activity_year_treat.RDS")
 combined_activity_year_monitor = readRDS("combined_activity_year_monitor.RDS")
 
+
 fig = {
   jpeg(filename = "combined_activity_year_treat.jpg",
-       width = 800, height = 600,
+       width = 700, height = 500,
        quality = 100,
        bg = "white",
        symbolfamily="default")
@@ -28,14 +29,21 @@ fig = {
     geom_bar(data = combined_activity_year_treat, 
              aes(x = year, y = net_acres, fill = "Net Acres"),
              stat = "identity", position = "dodge") +
-    ggtitle("R5 Postfire Reforestation Acres by Activity Year, 1994 - 2022 - Treatments") +
+    ggtitle("R5 Postfire Reforestation Acres by Activity Year, 2002 - 2022 (Treatments)") +
     labs(x = "Activity Year", y = "Activity Acres") +
-    scale_x_continuous(breaks = seq(1990, 2024, 6)) +
+    scale_x_continuous(breaks = seq(2000, 2024, 5)) +
     scale_y_continuous(labels = scales::comma) +
     facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
-    scale_fill_manual(values = c("Gross Acres" = "gray", "Net Acres" = "blue")) +
-    theme(legend.position="bottom", legend.box = "horizontal", legend.text = element_text(size=13), plot.title = element_text(size=18),
-          axis.title = element_text(size=14), axis.text = element_text(size=12), strip.text = element_text(size=14)) +
+    scale_fill_manual(values = c("Gross Acres" = "royalblue3", "Net Acres" = "cornflowerblue")) +
+    theme(legend.position="bottom", 
+          legend.box = "horizontal", 
+          legend.text = element_text(size=12),
+          plot.title = element_text(size=15), 
+          plot.margin = margin(t=10,r=20,b=10,l=10),
+          axis.title = element_text(face="bold", size=13),
+          axis.text.x = element_text(size=12),
+          axis.text.y = element_text(size=12),
+          strip.text = element_text(face="bold", size=13)) +
     guides(fill=guide_legend(title=NULL, nrow=1), color=guide_legend(title=NULL, nrow=1))
   print(p)
   dev.off()
@@ -44,7 +52,7 @@ fig = {
 
 fig = {
   jpeg(filename = "combined_activity_year_monitor.jpg",
-       width = 800, height = 600,
+       width = 700, height = 500,
        quality = 100,
        bg = "white",
        symbolfamily="default")
@@ -56,14 +64,21 @@ fig = {
     geom_bar(data = combined_activity_year_monitor, 
              aes(x = year, y = net_acres, fill = "Net Acres"),
              stat = "identity", position = "dodge") +
-    ggtitle("R5 Postfire Reforestation Acres by Activity Year, 1994 - 2022 - Monitoring") +
+    ggtitle("R5 Postfire Reforestation Acres by Activity Year, 2002 - 2022 (Monitoring)") +
     labs(x = "Activity Year", y = "Activity Acres") +
-    scale_x_continuous(breaks = seq(1990, 2024, 6)) +
+    scale_x_continuous(breaks = seq(2000, 2024, 5)) +
     scale_y_continuous(labels = scales::comma) +
     facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
-    scale_fill_manual(values = c("Gross Acres" = "gray", "Net Acres" = "blue")) +
-    theme(legend.position="bottom", legend.box = "horizontal", legend.text = element_text(size=13), plot.title = element_text(size=18),
-          axis.title = element_text(size=14), axis.text = element_text(size=12), strip.text = element_text(size=14)) +
+    scale_fill_manual(values = c("Gross Acres" = "royalblue3", "Net Acres" = "cornflowerblue")) +
+    theme(legend.position="bottom", 
+          legend.box = "horizontal", 
+          legend.text = element_text(size=12),
+          plot.title = element_text(size=15), 
+          plot.margin = margin(t=10,r=20,b=10,l=10),
+          axis.title = element_text(face="bold", size=13),
+          axis.text.x = element_text(size=12),
+          axis.text.y = element_text(size=12),
+          strip.text = element_text(face="bold", size=13)) +
     guides(fill=guide_legend(title=NULL, nrow=1), color=guide_legend(title=NULL, nrow=1))
   print(p)
   dev.off()

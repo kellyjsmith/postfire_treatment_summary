@@ -481,16 +481,24 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 #### Read and prepare Fire and FACTS datasets ####
 
-setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
+# setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
 
 nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
-fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
+# fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 facts <- st_read("../Data/facts_r5.shp")
+
+# json_path = "https://data-usfs.hub.arcgis.com/api/download/v1/items/f8fb12b1bab44c11b1bee96562cc4773/geojson?layers=0"
+facts2 <- st_read("F:\\Thesis\\EDW_Activity\\July2024\\facts_r5_2024.shp")
+# S_USA.Actv_CommonAttribute_PL.gdb",
+#                   layer = "Actv_CommonAttribute_PL")
+
+fires = st_read("../Data/mtbs_perims_DD.shp")
+fires$Ig_Year = year(fires$Ig_Date)
 
 fires = fires %>%
   mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
   filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year>2001 & Ig_Year<2023)
+  filter(Ig_Year>1999 & Ig_Year<2023)
 
 fires <- prepare_fires(fires,nfs_r5)
 
@@ -566,7 +574,7 @@ fires <- prepare_fires(fires,nfs_r5)
 
 # Filter out activities completed before study period
 facts <- facts %>%
-  filter(FISCAL_Y_2 > 2001 & FISCAL_Y_2 < 2024)
+  filter(FISCAL_Y_2 > 1999 & FISCAL_Y_2 < 2024)
 
 # Keep only reforestation-related activities and important fields
 facts <- facts[facts$ACTIVITY %in% manage,]
@@ -582,15 +590,15 @@ facts_fires <- intersect_activities(facts, fires, precision=100, cores=10)
 facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
                                                             facts_fires$fires,10)
 
-setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output/")
+# setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output/")
 
-saveRDS(facts_fires,"facts_fires_02_22.RDS")
-
-facts_fires = readRDS("facts_fires_02_22.RDS")
+saveRDS(facts_fires,"facts_fires_new.RDS")
 
 assigned_activities <- facts_fires$assigned_activities
 intersected_activities = facts_fires$fires_activities
 fires <- facts_fires$fires
+
+st_write(fires, "R5_fires_00_22.shp")
 
 # assigned_activities = read("assigned_activities.RDS")
 
@@ -671,9 +679,9 @@ new_labels = data.frame(
                     "Survey_Stocking", "Survey_Survival", 
                     "Silv_Prescription", "TSI_Prune", "TSI_Release", "TSI_Thin"),
   type_labels = c("Certification - Plant", "Certification - Release", 
-                  "Harvest (Non-Salvage)", "Harvest (Salvage)", 
-                  "Reforestation Need (Failure)", "Reforestation Need (Fire)","Reforestation Need (Harvest)", "Plant Trees", 
-                  "Fill-in or Replant Trees", "Site Prep (Chemical)", "Site Prep (Mechanical", "Site Prep (Other)", 
+                  "Harvest - Non-Salvage", "Harvest - Salvage", 
+                  "Reforest. Need - Failure", "Reforest. Need - Fire","Reforest. Need - Harvest", "Initial Planting", 
+                  "Fill-in or Replant", "Site Prep - Chemical", "Site Prep - Mechanical", "Site Prep - Other", 
                   "Stand Exam", "Stocking Survey", "Survival Survey", 
                   "Silvicultural Prescription", "TSI - Prune", "TSI - Release", "TSI - Thin")
 )
@@ -698,8 +706,8 @@ assigned_activities = assigned_activities %>%
 intersected_activities = intersected_activities %>% 
   filter(!is.na(type_labels))
 
-saveRDS(assigned_activities,"assigned_activities_02_22.RDS")
-saveRDS(intersected_activities,"intersected_activities_02_22.RDS")
+saveRDS(assigned_activities,"assigned_activities_new.RDS")
+saveRDS(intersected_activities,"intersected_activities_new.RDS")
 
 #### Create plant year field ####
 
@@ -758,74 +766,76 @@ process_assigned_activities <- function(assigned_activities) {
 # Usage
 processed_activities <- process_assigned_activities(assigned_activities)
 
-#### Calculate proportions ####
 
-calculate_treatment_proportions <- function(data, select_treatments, type_labels) {
-  
-  # Calculate net acres for each treatment and plantation
-  net_acres <- data %>%
-    filter(type_labels %in% c(select_treatments, "Plant Trees")) %>%
-    group_by(plant_year, Event_ID, type_labels) %>%
-    summarise(
-      geometry = st_union(geometry),
-      .groups = "drop"
-    ) %>%
-  print("net acres summarized by plant year")
-  
-  # Calculate plantation areas
-  plantation_areas <- net_acres %>%
-    filter(type_labels == "Plant Trees") %>%
-    group_by(plant_year) %>%
-    summarise(
-      plantation_geometry = st_union(geometry),
-      plantation_area_acres = sum(net_acres),
-      plantations_count = n(),
-      .groups = "drop") %>%
-    st_as_sf()
-  print("planted area summarized by plant year")
-  
-  # Calculate treatment areas and their intersection with plantations
-  treatment_areas <- net_acres %>%
-    filter(type_labels %in% select_treatments) %>%
-    group_by(plant_year, type_labels) %>%
-    summarise(
-      treatment_geometry = st_union(geometry),
-      treatment_area_acres = sum(net_acres),
-      fires_treated = n_distinct(Event_ID),
-      treatment_count = n(),
-      .groups = "drop") %>%
-    st_as_sf()
-  print("non-plant activity area summarized by plant year")
-  
-  treatment_areas = treatment_areas %>%
-    st_join(plantation_areas, join = st_intersects, left = TRUE) %>%
-    try(
-    mutate(
-      intersection_acres = st_area(st_intersection(plantation_geometry, treatment_geometry)/4046.86),
-      prop_of_plantation_area = intersection_acres / plantation_area_acres
-    )) %>%
-    select(-treatment_geometry) %>%  # Remove the duplicate geometry column
-    st_drop_geometry()  # Now we can safely drop the geometry
-  print("treatment proportions calculated")
-  
-  # Combine results
-  result <- treatment_areas %>%
-    select(plant_year.x, type_labels, treatment_count, fires_treated, treatment_area_acres, 
-           plantation_area_acres, plantations_count, prop_of_plantation_area) %>%
-    pivot_wider(
-      id_cols = c(plant_year.x, plantation_area_acres, plantations_count),
-      names_from = type_labels,
-      values_from = c(treatment_count, fires_treated, treatment_area_acres, prop_of_plantation_area),
-      values_fill = list(treatment_count = 0, fires_treated = 0, treatment_area_acres = 0, prop_of_plantation_area = 0)
-    ) %>%
-    arrange(plant_year)
-  print("summary by plant year complete")
-  
-  return(result)
-}
 
-select_treatments <- c("Stocking Survey", "Survival Survey", "Certification - Plant", "TSI - Release", "Fill-in or Replant Trees")
-treatment_proportions <- calculate_treatment_proportions(processed_activities, select_treatments, type_labels)
+# #### Calculate proportions ####
+# 
+# calculate_treatment_proportions <- function(data, select_treatments, type_labels) {
+#   
+#   # Calculate net acres for each treatment and plantation
+#   net_acres <- data %>%
+#     filter(type_labels %in% c(select_treatments, "Plant Trees")) %>%
+#     group_by(plant_year, Event_ID, type_labels) %>%
+#     summarise(
+#       geometry = st_union(geometry),
+#       .groups = "drop"
+#     ) %>%
+#   print("net acres summarized by plant year")
+#   
+#   # Calculate plantation areas
+#   plantation_areas <- net_acres %>%
+#     filter(type_labels == "Plant Trees") %>%
+#     group_by(plant_year) %>%
+#     summarise(
+#       plantation_geometry = st_union(geometry),
+#       plantation_area_acres = sum(net_acres),
+#       plantations_count = n(),
+#       .groups = "drop") %>%
+#     st_as_sf()
+#   print("planted area summarized by plant year")
+#   
+#   # Calculate treatment areas and their intersection with plantations
+#   treatment_areas <- net_acres %>%
+#     filter(type_labels %in% select_treatments) %>%
+#     group_by(plant_year, type_labels) %>%
+#     summarise(
+#       treatment_geometry = st_union(geometry),
+#       treatment_area_acres = sum(net_acres),
+#       fires_treated = n_distinct(Event_ID),
+#       treatment_count = n(),
+#       .groups = "drop") %>%
+#     st_as_sf()
+#   print("non-plant activity area summarized by plant year")
+#   
+#   treatment_areas = treatment_areas %>%
+#     st_join(plantation_areas, join = st_intersects, left = TRUE) %>%
+#     try(
+#     mutate(
+#       intersection_acres = st_area(st_intersection(plantation_geometry, treatment_geometry)/4046.86),
+#       prop_of_plantation_area = intersection_acres / plantation_area_acres
+#     )) %>%
+#     select(-treatment_geometry) %>%  # Remove the duplicate geometry column
+#     st_drop_geometry()  # Now we can safely drop the geometry
+#   print("treatment proportions calculated")
+#   
+#   # Combine results
+#   result <- treatment_areas %>%
+#     select(plant_year.x, type_labels, treatment_count, fires_treated, treatment_area_acres, 
+#            plantation_area_acres, plantations_count, prop_of_plantation_area) %>%
+#     pivot_wider(
+#       id_cols = c(plant_year.x, plantation_area_acres, plantations_count),
+#       names_from = type_labels,
+#       values_from = c(treatment_count, fires_treated, treatment_area_acres, prop_of_plantation_area),
+#       values_fill = list(treatment_count = 0, fires_treated = 0, treatment_area_acres = 0, prop_of_plantation_area = 0)
+#     ) %>%
+#     arrange(plant_year)
+#   print("summary by plant year complete")
+#   
+#   return(result)
+# }
+# 
+# select_treatments <- c("Stocking Survey", "Survival Survey", "Certification - Plant", "TSI - Release", "Fill-in or Replant Trees")
+# treatment_proportions <- calculate_treatment_proportions(processed_activities, select_treatments, type_labels)
 
 
 #### TODO: ####
