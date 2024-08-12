@@ -17,9 +17,8 @@ filtered_activities <- assigned_activities %>%
 # # Choose a specific year for testing
 # test_year <- 2007
 
-# Find the severity file for the test year
+# Find all severity files in the directory
 severity_files <- list.files("../Data/Severity", pattern = "mtbs_CA_\\d{4}\\.tif$", full.names = TRUE)
-
 
 # Function to process each year
 process_year <- function(year) {
@@ -27,10 +26,10 @@ process_year <- function(year) {
   
   severity_file <- severity_files[grep(paste0("mtbs_CA_", year, "\\.tif$"), severity_files)]
   
-  # Load the severity raster for the test year
+  # Load the severity raster for the processing year
   severity_raster <- rast(severity_file)
   
-  # Filter activities for the test year
+  # Filter activities for the processing year
   year_activities <- filtered_activities %>%
     filter(Ig_Year == year) %>%
     group_by(type_labels) %>%
@@ -58,10 +57,10 @@ process_year <- function(year) {
     
     all_severities <- data.frame(Severity = 0:6)
     severity_summary <- merge(all_severities, severity_summary, by = "Severity", all.x = TRUE)
-    severity_summary$Count[is.na(severity_summary$Layer)] <- 1
     severity_summary$Count[is.na(severity_summary$Count)] <- 0
     severity_summary$Area_acres[is.na(severity_summary$Area_acres)] <- 0
     
+    severity_summary$Layer <- year
     severity_summary$type_labels <- activity$type_labels
     severity_summary$Ig_Year <- year
     
