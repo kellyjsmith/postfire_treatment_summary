@@ -6,7 +6,7 @@ library("mapview")
 
 
 # Load assigned activities
-assigned_activities <- readRDS("assigned_activities_new.RDS")
+assigned_activities <- readRDS("../Output/assigned_activities_new.RDS")
 
 # Subset activities to simplify severity summary
 activity_types <- c("Initial Planting", "Fill in or Replant", "TSI - Release", 
@@ -18,9 +18,8 @@ filtered_activities <- assigned_activities %>%
 # test_year <- 2007
 
 # Find the severity file for the test year
-severity_files <- list.files("../Data/Severity", 
-                            pattern = paste0("mtbs_CA_", year, "\\.tif$"), 
-                            full.names = TRUE)
+severity_files <- list.files("../Data/Severity", pattern = "mtbs_CA_\\d{4}\\.tif$", full.names = TRUE)
+
 
 # Function to process each year
 process_year <- function(year) {
@@ -28,9 +27,8 @@ process_year <- function(year) {
   
   severity_file <- severity_files[grep(paste0("mtbs_CA_", year, "\\.tif$"), severity_files)]
   
-  
   # Load the severity raster for the test year
-  severity_raster <- rast(severity_files)
+  severity_raster <- rast(severity_file)
   
   # Filter activities for the test year
   year_activities <- filtered_activities %>%
