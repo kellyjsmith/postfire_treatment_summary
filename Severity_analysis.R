@@ -33,10 +33,10 @@ process_year_activities <- function(year) {
   
   # Filter activities for the processing year
   year_activities <- filtered_activities %>%
-    filter(Ig_Year == year) %>%
-    group_by(type_labels) %>%
-    summarize(geometry = st_union(geometry)) %>%
-    ungroup()
+    filter(Ig_Year == year)
+    # group_by(type_labels) %>%
+    # summarize(geometry = st_union(geometry)) %>%
+    # ungroup()
   
   # Ensure CRS match
   year_activities <- st_transform(year_activities, crs(severity_raster))
@@ -46,9 +46,11 @@ process_year_activities <- function(year) {
   for (i in 1:nrow(year_activities)) {
     activity <- year_activities[i, ]
     activity_vect <- vect(activity)
+    print(paste("Activity acres:", st_area(activity)/4046.86))
     
     activity_severity <- crop(severity_raster, ext(activity_vect))
     activity_severity <- mask(activity_severity, activity_vect)
+    print(paste("Cropped raster cells:", global(activity_severity, "notNA", na.rm=TRUE)))
     
     # Calculate area in acres (30m resolution)
     cell_size_acres <- 30 * 30 / 4046.86
@@ -135,11 +137,14 @@ process_year <- function(year) {
   # Load the severity raster for the processing year
   severity_raster <- rast(severity_file)
   
+  fire_events = fire_events %>%
+    mutate(fire_id = paste(Incid_Name, Ig_Year, sep = "_"))
+  
   # Filter fire events for the processing year
   year_events <- fire_events %>%
     filter(Ig_Year == year) %>%
-    group_by(Event_ID, Incid_Name) %>%
-    summarise(total_fire_acres = BurnBndAc) %>%
+    group_by(fire_id) %>%
+    summarise(total_fire_acres = sum(BurnBndAc)) %>%
     ungroup()
   
   # Ensure CRS match
@@ -161,14 +166,15 @@ process_year <- function(year) {
     names(severity_summary) <- c("Layer", "Severity", "Count")
     severity_summary$Area_acres <- severity_summary$Count * cell_size_acres
     
-    all_severities <- data.frame(Severity = 0:6)
+    all_severities <- data.frame(Severity = 0:7)
     severity_summary <- merge(all_severities, severity_summary, by = "Severity", all.x = TRUE)
     severity_summary$Count[is.na(severity_summary$Count)] <- 0
     severity_summary$Area_acres[is.na(severity_summary$Area_acres)] <- 0
     
     severity_summary$Layer <- year
-    severity_summary$Event_ID <- event$Event_ID
-    severity_summary$Incid_Name <- event$Incid_Name
+    # severity_summary$Event_ID <- event$Event_ID
+    # severity_summary$Incid_Name <- event$Incid_Name
+    severity_summary$fire_id <- event$fire_id
     severity_summary$Ig_Year <- year
     severity_summary$total_fire_acres <- event$total_fire_acres
     
@@ -209,7 +215,7 @@ class_names <- c(
 final_fire_summaries <- fire_summaries_combined %>%
   na.omit() %>%
   pivot_wider(
-    id_cols = c(Ig_Year, Event_ID, Incid_Name, total_fire_acres),
+    id_cols = c(Ig_Year, fire_id, total_fire_acres),
     names_from = Severity,
     values_from = Area_acres,
     # names_glue = "{class_names[Severity]}_Acres"
@@ -217,7 +223,7 @@ final_fire_summaries <- fire_summaries_combined %>%
   ) %>%
   rename_with(~ paste0(class_names[sub("class_", "", .)], "_acres"), starts_with("class_")) %>%
   mutate(across(4:11, round, 2)) %>%
-  group_by(Ig_Year, Event_ID, Incid_Name) %>%
+  group_by(Ig_Year, fire_id) %>%
   mutate(total_severity = sum(Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres, Increased_Greenness_acres)) %>%
   mutate(Percent_high = High_acres / total_severity) %>%
   ungroup()

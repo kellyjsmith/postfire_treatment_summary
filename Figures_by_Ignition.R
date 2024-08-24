@@ -11,210 +11,11 @@ library(grid)
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
-combined_cumulative_treat = readRDS("combined_cumulative_treat.RDS")
-combined_cumulative_monitor = readRDS("combined_cumulative_monitor.RDS")
-
-combined_cumulative_5years_treat = readRDS("combined_cumulative_5years_treat.RDS")
-combined_cumulative_5years_monitor = readRDS("combined_cumulative_5years_monitor.RDS")
-
 combined_ignition_year = readRDS("combined_ignition_year.RDS")
 combined_ignition_year_treat = readRDS("combined_ignition_year_treat.RDS")
 combined_ignition_year_monitor = readRDS("combined_ignition_year_monitor.RDS")
 combined_ignition_select = combined_ignition_year %>%
   filter(type_labels %in% c("Initial Planting", "TSI - Release", "Survival Survey", "Stocking Survey"))
-
-
-fig = {
-  jpeg(filename = "combined_cumulative_treat.jpg",
-       width = 700, height = 500,
-       quality = 100,
-       bg = "white",
-       symbolfamily="default")
-  p = ggplot() +
-        theme_bw() +
-        geom_area(data = combined_cumulative_treat, aes(x = end, y = gross_acres, fill = "Gross Acres to Date"), alpha = 0.9) +
-        geom_area(data = combined_cumulative_treat, aes(x = end, y = net_acres, fill = "Net Acres to Date"), alpha = 0.9) +
-        geom_line(data = combined_cumulative_5years_treat, 
-                  aes(x = end, y = gross_acres, color = "Gross Acres <= 5 Years Postfire"), linewidth = 1.25) +
-        geom_line(data = combined_cumulative_5years_treat, 
-                  aes(x = end, y = net_acres, color = "Net Acres <= 5 Years Postfire"), linewidth = 1.25) +
-        ggtitle("Cumulative Postfire Reforestation Activities in R5, 2002 - 2023 (Treatments)") +
-        labs(x = "Year", y = "Activity Acres") +
-        scale_x_continuous(breaks = seq(2000, 2024, 5)) +
-        scale_y_continuous(labels = scales::comma) +
-        facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
-        scale_fill_manual(values = c("Gross Acres to Date" = "gray50", "Net Acres to Date" = "gray80")) +
-        scale_color_manual(values = c("Gross Acres <= 5 Years Postfire" = "blue2", "Net Acres <= 5 Years Postfire" = "orangered2")) +
-        theme(legend.position="bottom", 
-              legend.box = "horizontal", 
-              legend.text = element_text(size=12),
-              plot.title = element_text(size=15), 
-              plot.margin = margin(t=10,r=20,b=10,l=10),
-              axis.title = element_text(face="bold", size=13),
-              axis.text.x = element_text(size=12),
-              axis.text.y = element_text(size=12),
-              strip.text = element_text(face="bold", size=13)) +
-        guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL, nrow=2))
-  print(p)
-  dev.off()
-}
-
-
-fig = {
-  jpeg(filename = "combined_cumulative_monitor.jpg",
-       width = 700, height = 500,
-       quality = 100, bg = "white")
-  p = ggplot() +
-    theme_bw() +
-    geom_area(data = combined_cumulative_monitor, aes(x = end, y = gross_acres, fill = "Gross Acres to Date"), alpha = 0.9) +
-    geom_area(data = combined_cumulative_monitor, aes(x = end, y = net_acres, fill = "Net Acres to Date"), alpha = 0.9) +
-    geom_line(data = combined_cumulative_5years_monitor, 
-              aes(x = end, y = gross_acres, color = "Gross Acres <= 5 Years Postfire"), linewidth = 1.25) +
-    geom_line(data = combined_cumulative_5years_monitor, 
-              aes(x = end, y = net_acres, color = "Net Acres <= 5 Years Postfire"), linewidth = 1.25) +
-    ggtitle("Cumulative Postfire Reforestation Activities in R5, 2002 - 2023 (Monitoring)") +
-    labs(x = "Year", y = "Activity Acres") +
-    scale_x_continuous(breaks = seq(2000, 2024, 5)) +
-    scale_y_continuous(labels = scales::comma) +
-    facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
-    scale_fill_manual(values = c("Gross Acres to Date" = "gray50", "Net Acres to Date" = "gray80")) +
-    scale_color_manual(values = c("Gross Acres <= 5 Years Postfire" = "blue2", "Net Acres <= 5 Years Postfire" = "orangered2")) +
-    theme(legend.position="bottom", 
-          legend.box = "horizontal", 
-          legend.text = element_text(size=12),
-          plot.title = element_text(size=15), 
-          plot.margin = margin(t=10,r=20,b=10,l=10),
-          axis.title = element_text(face="bold", size=13),
-          axis.text.x = element_text(size=12),
-          axis.text.y = element_text(size=12),
-          strip.text = element_text(face="bold", size=13)) +
-    guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL, nrow=2))
-  print(p)
-  dev.off()
-}
-
-
-# Filter and prepare the reforestation activities data
-reforestation_activities <- combined_cumulative %>%
-  filter(big_groups %in% c("Reforestation")) %>%
-  select(end, type_labels, net_acres)
-
-# 
-# # Assuming cumulative_burned and reforestation_activities are already created as before
-# 
-# # Calculate the maximum values for scaling
-# max_burned <- max(cumulative_burned$CumulativeAreaBurned)
-# max_reforest <- max(reforestation_activities$net_acres)
-# 
-# # Create the combined figure with dual y-axes
-# fig <- {
-#   jpeg(filename = "cumulative_burned_and_reforestation_dual_axis_improved.jpg",
-#        width = 700, height = 500,
-#        quality = 100,
-#        bg = "white",
-#        symbolfamily="default")
-#   
-#   p <- ggplot() +
-#     # Cumulative area burned
-#     geom_area(data = cumulative_burned, 
-#               aes(x = Ig_Year, y = CumulativeAreaBurned), 
-#               fill = "red", alpha = 0.3) +
-#     # Reforestation activities
-#     geom_line(data = reforestation_activities, 
-#               aes(x = end, y = net_acres * (max_burned / max_reforest), color = type_labels), 
-#               size = 1.2) +
-#     scale_color_manual(values = c("Plant Trees" = "darkgreen", 
-#                                   "Fill-in or Replant Trees" = "forestgreen")) +
-#     # Primary y-axis (burned area)
-#     scale_y_continuous(name = "Cumulative Area Burned (Million Acres)",
-#                        labels = function(x) format(x / 1e6, digits = 2),
-#                        sec.axis = sec_axis(~ . * (max_reforest / max_burned), 
-#                                            name = "Reforestation Activities (Thousand Acres)",
-#                                            labels = function(x) format(x / 1e3, digits = 2))) +
-#     # Formatting
-#     theme_bw() +
-#     ggtitle("Cumulative Area Burned vs. Reforestation Activities in R5, 2002 - 2023") +
-#     labs(x = "Year", color = "Reforestation Activity") +
-#     scale_x_continuous(breaks = seq(2002, 2023, 2)) +
-#     theme(
-#       plot.title = element_text(size = 16, face = "bold"),
-#       axis.title = element_text(face = "bold", size = 14),
-#       axis.text = element_text(size = 12),
-#       legend.position = "bottom",
-#       legend.title = element_text(size = 12, face = "bold"),
-#       legend.text = element_text(size = 11),
-#       axis.title.y.left = element_text(color = "red"),
-#       axis.title.y.right = element_text(color = "darkgreen")
-#     )
-#   
-#   print(p)
-#   dev.off()
-# }
-# 
-# 
-# # Assuming cumulative_burned and reforestation_activities are already created
-# 
-# # Prepare the data
-# cumulative_burned <- cumulative_burned %>%
-#   mutate(data_type = "Cumulative Area Burned")
-# 
-# reforestation_activities <- reforestation_activities %>%
-#   mutate(data_type = "Reforestation Activities")
-# 
-# # Combine the datasets
-# combined_data <- bind_rows(
-#   cumulative_burned %>% select(year = Ig_Year, value = CumulativeAreaBurned, data_type),
-#   reforestation_activities %>% select(year = end, value = net_acres, data_type, type_labels)
-# )
-# 
-# 
-# # Create the faceted plot
-# fig <- {
-#   jpeg(filename = "faceted_burned_and_reforestation.jpg",
-#        width = 1200, height = 800,
-#        quality = 100,
-#        bg = "white",
-#        symbolfamily="default")
-#   
-#   p <- ggplot(combined_data, aes(x = year, y = value)) +
-#     facet_wrap(~ data_type, ncol = 1, scales = "free_y") +
-#     geom_area(data = subset(combined_data, data_type == "Cumulative Area Burned"),
-#               fill = "red", alpha = 0.3) +
-#     geom_line(data = subset(combined_data, data_type == "Reforestation Activities"),
-#               aes(color = type_labels), size = 1.2) +
-#     scale_color_manual(values = c("Plant Trees" = "darkgreen", 
-#                                   "Fill-in or Replant Trees" = "forestgreen")) +
-#     scale_x_continuous(breaks = seq(2002, 2023, 2)) +
-#     scale_y_continuous(labels = scales::comma_format(scale = 1e-6, suffix = "M"),
-#                        name = "Acres") +
-#     labs(title = "Cumulative Area Burned vs. Reforestation Activities in R5, 2002 - 2023",
-#          x = "Year",
-#          color = "Reforestation Activity") +
-#     theme_bw() +
-#     theme(
-#       plot.title = element_text(size = 16, face = "bold"),
-#       axis.title = element_text(face = "bold", size = 14),
-#       axis.text = element_text(size = 12),
-#       legend.position = "bottom",
-#       legend.title = element_text(size = 12, face = "bold"),
-#       legend.text = element_text(size = 11),
-#       strip.text = element_text(size = 14, face = "bold"),
-#       strip.background = element_rect(fill = "lightgray")
-#     )
-#   
-#   # Add annotations for maximum values
-#   p <- p + geom_text(data = combined_data %>% 
-#                        group_by(data_type) %>% 
-#                        summarize(year = max(year),
-#                                  value = max(value),
-#                                  label = scales::comma(max(value))),
-#                      aes(label = label),
-#                      hjust = 1, vjust = 1, size = 4, fontface = "bold")
-#   
-#   print(p)
-#   dev.off()
-# }
-
 
 
 #### Treated + Burned by Ignition Year ####
@@ -508,6 +309,9 @@ combined_bubble_output <- treated_burned_bubble(activity_proportions_by_fire, bu
 # Save plot
 ggsave("Treated_Burned_bubble.png", combined_bubble_output, width = 10, height = 7)
 
+
+
+
 # Bar chart for net acres planted, certified, replanted, and released
 treated_burned_dual <- function(treat_data, burn_data) {
   data_long <- treat_data %>%
@@ -534,9 +338,9 @@ treated_burned_dual <- function(treat_data, burn_data) {
   scale_factor <- max(data_long$Net_Acres, na.rm = TRUE) / max(data_summarized$acres_burned_r5, na.rm = TRUE)
 
   ggplot() +
-    geom_col(data = data_long, aes(x = Ig_Year, y = Net_Acres, fill = Activity), position = "dodge") +
     geom_line(data = data_summarized, aes(x = Ig_Year, y = acres_burned_r5 * scale_factor), 
               alpha = 0.9, color = "red3", size = 2) +
+    geom_col(data = data_long, aes(x = Ig_Year, y = Net_Acres, fill = Activity), position = "dodge") +
     scale_fill_manual(values = c("Planted" = "forestgreen", "Replanted" = "black", "Released" = "royalblue"),
                       name = "Activity") +
     scale_y_continuous(
@@ -563,6 +367,56 @@ Treated_Burned_dualaxis <- treated_burned_dual(activity_proportions_by_fire, bur
 
 # Save plot
 ggsave("Treated_Burned_dualaxis.png", Treated_Burned_dualaxis, width = 10, height = 7)
+
+
+
+
+chart_usfs_nfs_r5burn <- function(budget_data, burn_data) {
+  # Merge the data
+  merged_data <- budget_data %>%
+    select(Year, NFS_Total) %>%
+    left_join(burn_data %>% select(Ig_Year, acres_burned), by = c("Year" = "Ig_Year"))
+  
+  # Calculate the scaling factor for the secondary axis
+  scale_factor <- max(merged_data$NFS_Total, na.rm = TRUE) / max(merged_data$acres_burned, na.rm = TRUE)
+  
+  # Create the plot
+  ggplot(merged_data, aes(x = Year)) +
+    # NFS Total budget columns
+    geom_col(aes(y = NFS_Total), fill = "forestgreen", alpha = 0.7) +
+    # Region 5 acres burned line
+    geom_line(aes(y = acres_burned * scale_factor), color = "red", size = 1.5) +
+    # Scales and labels
+    scale_y_continuous(
+      name = "NFS Total Budget ($ Billions)",
+      labels = scales::dollar_format(scale = 1, prefix = "$", suffix = "B"),
+      sec.axis = sec_axis(~./scale_factor, 
+                          name = "Region 5 Acres Burned",
+                          labels = scales::comma_format())
+    ) +
+    scale_x_continuous(breaks = seq(min(merged_data$Year), max(merged_data$Year), by = 2)) +
+    labs(title = "USFS NFS Total Budget vs. Region 5 Acres Burned (2002-2023)",
+         x = "Year") +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      axis.title.y.left = element_text(color = "forestgreen"),
+      axis.title.y.right = element_text(color = "red")
+    )
+}
+
+# Generate the plot
+usfs_nfs_r5burn_plot <- chart_usfs_nfs_r5burn(usfs_budgets_burn, burned_area_by_year)
+
+# Display the plot
+print(usfs_nfs_r5burn_plot)
+
+# Save the plot (optional)
+ggsave("usfs_nfs_r5burn_plot.png", usfs_nfs_r5burn_plot, width = 12, height = 8, dpi = 300)
+
+# Save the plot (optional)
+# ggsave("usfs_budget_burn_plot.png", usfs_budget_burn_plot, width = 12, height = 8, dpi = 300)
 
 # # Horizontal bar chart for net acres planted, certified, replanted, and released
 # horizontal_bar_chart <- function(data) {
@@ -646,6 +500,46 @@ combined_ignition_year_monitor = readRDS("combined_ignition_year_monitor.RDS")
 
 combined_ignition_year_treat_5years = readRDS("combined_ignition_year_treat_5years.RDS")
 combined_ignition_year_monitor_5years = readRDS("combined_ignition_year_monitor_5years.RDS")
+
+
+fig = {
+  jpeg(filename = "selected_treatments_ignition_year.jpg",
+       width = 700, height = 500,
+       quality = 100,
+       bg = "white",
+       symbolfamily="default")
+  
+  # Filter the data for selected treatment types
+  selected_treatments <- c("Initial Planting", "Fill in or Replant", "TSI - Release", "TSI - Thin")
+  
+  filtered_data <- net_activities %>%
+    filter(type_labels %in% selected_treatments)
+  
+  p = ggplot() +
+    theme_bw() +
+    geom_bar(data = filtered_data,
+             aes(x = Ig_Year, y = net_acres, fill = type_labels),
+             stat = "identity", position = "dodge") +
+    ggtitle("R5 Postfire Reforestation Net Acres by Ignition Year, 2000 - 2022") +
+    labs(x = "Ignition Year", y = "Net Activity Acres", fill = "Treatment Type") +
+    scale_x_continuous(breaks = seq(2000, 2022, 4)) +
+    scale_y_continuous(labels = scales::comma) +
+    scale_fill_brewer(palette = "Set2") +
+    theme(legend.position="bottom", 
+          legend.box = "horizontal", 
+          legend.text = element_text(size=12),
+          plot.title = element_text(size=15), 
+          plot.margin = margin(t=10,r=20,b=10,l=10),
+          axis.title = element_text(face="bold", size=13),
+          axis.text.x = element_text(size=12),
+          axis.text.y = element_text(size=12)) +
+    guides(fill=guide_legend(title=NULL, nrow=2))
+  
+  print(p)
+  dev.off()
+}
+
+
 
 
 

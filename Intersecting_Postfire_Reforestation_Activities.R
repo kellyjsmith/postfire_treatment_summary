@@ -709,6 +709,8 @@ intersected_activities = intersected_activities %>%
 saveRDS(assigned_activities,"assigned_activities_new.RDS")
 saveRDS(intersected_activities,"intersected_activities_new.RDS")
 
+
+
 #### Create plant year field ####
 
 # Function to link each non-plant management activity the most recent planting that is
