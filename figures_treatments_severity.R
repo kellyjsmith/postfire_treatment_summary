@@ -514,7 +514,7 @@ select_treatments_by_severity <- function(data, max_treat_axis = 10000) {
   # Create plot function
   create_post_plot <- function(data, title) {
     ggplot(data, aes(x = Ig_Year, y = Net_Acres, fill = Severity)) +
-      geom_col(position = "stack", color = "black", size = 0.2) +
+      geom_col(position = "stack", color = "black", size = 0.1) +
       facet_wrap(~ type_labels, nrow = 1, scales = "free") +
       scale_fill_manual(values = c("Unburned to Low" = "darkgreen", 
                                    "Low" = "skyblue", 
@@ -562,7 +562,7 @@ Combined_Treatments_Severity <- select_treatments_by_severity(severity_summary, 
 print(Combined_Treatments_Severity)
 
 # Save combined plot
-ggsave("Combined_Treatments_Severity.png", Combined_Treatments_Severity, width = 7, height = 6)
+ggsave("Combined_Treatments_Severity.png", Combined_Treatments_Severity, width = 7, height = 5)
 
 
 
@@ -625,7 +625,153 @@ ggsave("Treatment_Acres_By_Severity.png", Treatment_Acres_By_Severity, width = 7
 
 
 
+library(patchwork)
 
+treatment_percentages_by_severity <- function(severity_summary) {
+  # Prepare data
+  treatment_data <- severity_summary %>%
+    filter(Category %in% c("All Activities", "Total Burned"),
+           type_labels %in% c("Initial Planting", "Fill-in or Replant", "TSI - Release", 
+                              "Harvest - Salvage", "Site Prep - Mechanical", "Site Prep - Other", 
+                              "Site Prep - Chemical", "TSI - Thin") | Category == "Total Burned") %>%
+    select(Category, type_labels, Ig_Year, Unburned_to_Low_acres_percent, Low_acres_percent, 
+           Moderate_acres_percent, High_acres_percent) %>%
+    pivot_longer(cols = c(Unburned_to_Low_acres_percent, Low_acres_percent, 
+                          Moderate_acres_percent, High_acres_percent),
+                 names_to = "Severity",
+                 values_to = "Percentage") %>%
+    mutate(Severity = case_when(
+      Severity == "Unburned_to_Low_acres_percent" ~ "Unburned to Low",
+      Severity == "Low_acres_percent" ~ "Low",
+      Severity == "Moderate_acres_percent" ~ "Moderate",
+      Severity == "High_acres_percent" ~ "High"
+    ))
+  
+  # Calculate overall percentages
+  overall_percentages <- treatment_data %>%
+    group_by(Category, type_labels, Severity) %>%
+    summarize(Overall_Percentage = mean(Percentage, na.rm = TRUE), .groups = "drop")
+  
+  # Set factor levels for proper ordering
+  treatment_types <- c("Initial Planting", "Fill-in or Replant", "TSI - Release", 
+                       "Harvest - Salvage", "Site Prep - Mechanical", 
+                       "Site Prep - Chemical", "Site Prep - Other", "TSI - Thin")
+  severity_levels <- c("High", "Moderate", "Low", "Unburned to Low")
+  
+  overall_percentages$type_labels <- factor(overall_percentages$type_labels, levels = c(treatment_types, "Total Burned"))
+  overall_percentages$Severity <- factor(overall_percentages$Severity, levels = severity_levels)
+  
+  # Color palette
+  severity_colors <- c("High" = "red", "Moderate" = "yellow2", "Low" = "skyblue", "Unburned to Low" = "darkgreen")
+  
+  # Create main plot (excluding Total Burned)
+  main_plot <- ggplot() +
+    geom_col(data = treatment_data %>% filter(Category == "All Activities"), 
+             aes(x = Ig_Year, y = Percentage, fill = Severity),
+             position = "stack", width = 1) +
+    geom_col(data = overall_percentages %>% filter(Category == "All Activities"),
+             aes(x = max(treatment_data$Ig_Year) + 2, y = Overall_Percentage, fill = Severity),
+             position = "stack", width = 2) +
+    facet_wrap(~ type_labels, scales = "free", ncol = 2) +
+    scale_fill_manual(values = severity_colors, name = "Burn Severity Class") +
+    scale_x_continuous(breaks = c(seq(min(treatment_data$Ig_Year), max(treatment_data$Ig_Year), by = 4), 
+                                  max(treatment_data$Ig_Year) + 2),
+                       labels = c(seq(min(treatment_data$Ig_Year), max(treatment_data$Ig_Year), by = 4), 
+                                  "Overall")) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    labs(title = "Distribution of Postfire Activity Area by Burn Severity Class",
+         subtitle = "Percentage of Total Acres by Ignition Year - USFS Region 5, 2000 - 2021",
+         x = "Ignition Year",
+         y = "Percentage of Total Acres") +
+    theme_bw(base_size = 10) +
+    theme(
+      axis.text.x = element_text(hjust = 0.5, size = 9),
+      strip.text = element_text(size = 10, face = "bold"),
+      legend.text = element_text(size = 9),
+      legend.title = element_text(face = "bold", size = 10), 
+      plot.title = element_text(face = "bold", size = 12),
+      plot.subtitle = element_text(size = 10),
+      plot.margin = margin(10, 10, 10, 10),
+      axis.title = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 9),
+      legend.position = "bottom",
+      legend.justification = "center"
+    ) +
+    guides(fill = guide_legend(nrow = 1))
+  
+  # Create summary plot for treatment types
+  summary_plot_treatments <- ggplot(overall_percentages %>% filter(Category == "All Activities"), 
+                                    aes(x = fct_rev(type_labels), y = Overall_Percentage, fill = fct_rev(Severity))) +
+    geom_col(position = "stack", color = "black", size = 0.1) +
+    scale_fill_manual(values = severity_colors, name = "Burn Severity Class") +
+    labs(title = NULL,
+         subtitle = NULL,
+         x = "Treatment Type",
+         y = "Percentage of Total Net Acres") +
+    theme_bw(base_size = 10) +
+    theme(
+      axis.text.x = element_text(hjust = 0.5, angle = 0),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      legend.text = element_text(size = 9),
+      legend.title = element_text(face = "bold", size = 10), 
+      plot.title = element_text(face = "bold", size = 11),
+      plot.subtitle = element_text(size = 10),
+      plot.margin = margin(10, 10, 10, 10),
+      axis.title = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 9),
+      legend.position = "none"
+    ) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    coord_flip()
+  
+  # Create summary plot for total burned area
+  summary_plot_total_burned <- ggplot(overall_percentages %>% filter(Category == "Total Burned"), 
+                                      aes(x = Category, y = Overall_Percentage, fill = fct_rev(Severity))) +
+    geom_col(position = "stack", color = "black", size = 0.1) +
+    scale_fill_manual(values = severity_colors, name = "Burn Severity Class") +
+    labs(title = NULL,
+         x = NULL,
+         y = "Percentage of Total Burned Acres") +
+    theme_bw(base_size = 10) +
+    theme(
+      # axis.text.x = element_blank(),
+      # axis.ticks.x = element_blank(),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      legend.text = element_text(size = 9),
+      legend.title = element_text(face = "bold", size = 10), 
+      plot.title = element_text(face = "bold", size = 11),
+      plot.subtitle = element_text(size = 10),
+      plot.margin = margin(10, 10, 10, 10),
+      axis.title = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 9),
+      legend.position = "bottom",
+      legend.justification = "center"
+    ) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    coord_flip() +
+    guides(fill = guide_legend(nrow = 1, reverse = TRUE))
+  
+  # Combine plots using patchwork
+  combined_summary_plot <- summary_plot_treatments / summary_plot_total_burned +
+    plot_layout(heights = c(7, 1)) +
+    plot_annotation(
+      title = "Overall Distribution of Burn Severity Classes",
+      subtitle = "By Treatment Type and Total Burned Area, USFS R5 Fires - 2000-2021",
+      theme = theme(plot.title = element_text(face = "bold", size = 12),
+                    plot.subtitle = element_text(size = 11))
+    )
+  
+  return(list(main_plot = main_plot, combined_summary_plot = combined_summary_plot))
+}
+
+# Generate plots
+Treatment_Percentages_By_Severity <- treatment_percentages_by_severity(severity_summary)
+
+# Save the main plot
+ggsave("Treatment_Percentages_By_Severity_Main.png", Treatment_Percentages_By_Severity$main_plot, width = 12, height = 8)
+
+# Save the summary plot
+ggsave("Treatment_Percentages_By_Severity_Summary.png", Treatment_Percentages_By_Severity$combined_summary_plot, width = 7, height = 4)
 
 # pre_planting_treatments_by_severity <- function(activity_by_severity, max_treat_axis = 10000) {
 #   # Prepare treated data

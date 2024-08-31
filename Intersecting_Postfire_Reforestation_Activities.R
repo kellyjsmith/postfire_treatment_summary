@@ -413,38 +413,93 @@ intersect_activities <- function(activities, fires, precision, cores){
 #   return(return_list)
 # }
 
-# Function for summarizing fires_activities for overlapping fires
+# # Function for summarizing fires_activities for overlapping fires
+# assign_activities <- function(fires_activities, fires){
+#   
+#   for(i in 1:nrow(fires_activities)){
+#     # if activity year is NA there is no way to assign fires
+#     if(is.na(fires_activities$year[i])){
+#       fires_activities[i,"assigned_fire"]<-NA
+#       fires_activities[i,"flag"]<-0
+#       next
+#     }
+#     
+#     fires_i<-fires[fires_activities$origins[[i]],]
+#     fires_i<-fires_i[fires_i$Ig_Year<= fires_activities$year[i],]
+#     
+#     if(nrow(fires_i)==0){
+#       fires_activities[i,"assigned_fire"]<-NA
+#       fires_activities[i,"flag"]<-0
+#       next
+#     }
+#     
+#     if(nrow(fires_i)==1){
+#       fires_activities[i,"assigned_fire"]<-fires_i$Event_ID
+#       fires_activities[i,"flag"]<-1
+#     }else{
+#       fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
+#       fires_activities[i,"flag"]<-length(fires_i$Event_ID)
+#       fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
+#       fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
+#       fires_activities[i,"assigned_fire"]<-fires_i$Event_ID[1]
+#     }
+#     
+#   }
+#   return(fires_activities)
+# }
+
 assign_activities <- function(fires_activities, fires){
+  
+  # Create a dictionary to store the most recent fire assignment for each facts_polygon_id
+  polygon_fire_dict <- list()
   
   for(i in 1:nrow(fires_activities)){
     # if activity year is NA there is no way to assign fires
     if(is.na(fires_activities$year[i])){
-      fires_activities[i,"assigned_fire"]<-NA
-      fires_activities[i,"flag"]<-0
+      fires_activities[i,"assigned_fire"] <- NA
+      fires_activities[i,"flag"] <- 0
       next
     }
     
-    fires_i<-fires[fires_activities$origins[[i]],]
-    fires_i<-fires_i[fires_i$Ig_Year<= fires_activities$year[i],]
+    current_polygon_id <- fires_activities$facts_polygon_id[i]
     
-    if(nrow(fires_i)==0){
-      fires_activities[i,"assigned_fire"]<-NA
-      fires_activities[i,"flag"]<-0
+    fires_i <- fires[fires_activities$origins[[i]],]
+    fires_i <- fires_i[fires_i$Ig_Year <= fires_activities$year[i],]
+    
+    if(nrow(fires_i) == 0){
+      fires_activities[i,"assigned_fire"] <- NA
+      fires_activities[i,"flag"] <- 0
       next
     }
     
-    if(nrow(fires_i)==1){
-      fires_activities[i,"assigned_fire"]<-fires_i$Event_ID
-      fires_activities[i,"flag"]<-1
-    }else{
-      fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
-      fires_activities[i,"flag"]<-length(fires_i$Event_ID)
-      fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-      fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
-      fires_activities[i,"assigned_fire"]<-fires_i$Event_ID[1]
+    if(nrow(fires_i) == 1){
+      assigned_fire <- fires_i$Event_ID
+      fires_activities[i,"flag"] <- 1
+    } else {
+      fires_i$diff_time <- fires_activities$year[i] - fires_i$Ig_Year
+      fires_activities[i,"flag"] <- length(fires_i$Event_ID)
+      fires_i <- fires_i[which(fires_i$diff_time == min(fires_i$diff_time)),]
+      fires_i <- fires_i[fires_i$fire_area == max(fires_i$fire_area),]
+      assigned_fire <- fires_i$Event_ID[1]
     }
     
+    # Check if we have a previous assignment for this polygon
+    if(!is.null(polygon_fire_dict[[current_polygon_id]])){
+      previous_fire <- polygon_fire_dict[[current_polygon_id]]
+      previous_fire_year <- fires$Ig_Year[fires$Event_ID == previous_fire]
+      
+      # If the current assignment is older than the previous one, use the previous assignment
+      if(fires_i$Ig_Year[fires_i$Event_ID == assigned_fire] < previous_fire_year){
+        assigned_fire <- previous_fire
+      }
+    }
+    
+    # Update the dictionary with the most recent fire assignment
+    polygon_fire_dict[[current_polygon_id]] <- assigned_fire
+    
+    fires_activities[i,"assigned_fire"] <- assigned_fire
   }
+  
   return(fires_activities)
 }
 
@@ -486,11 +541,7 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
 # fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 facts <- st_read("../Data/facts_r5.shp")
-
-# json_path = "https://data-usfs.hub.arcgis.com/api/download/v1/items/f8fb12b1bab44c11b1bee96562cc4773/geojson?layers=0"
-facts2 <- st_read("F:\\Thesis\\EDW_Activity\\July2024\\facts_r5_2024.shp")
-# S_USA.Actv_CommonAttribute_PL.gdb",
-#                   layer = "Actv_CommonAttribute_PL")
+# facts2 <- st_read("F:\\Thesis\\EDW_Activity\\July2024\\facts_r5_2024.shp")
 
 fires = st_read("../Data/mtbs_perims_DD.shp")
 fires$Ig_Year = year(fires$Ig_Date)
@@ -502,75 +553,6 @@ fires = fires %>%
 
 fires <- prepare_fires(fires,nfs_r5)
 
-## Self-intersect with unioned fire layer across geographic chunks ####
-# 
-# # Union
-# fires_union = st_union(fires)
-# fires_union = st_as_sf(fires_union)
-# # Break multipolygon into single polygons
-# fires_union = st_cast(fires_union, "POLYGON")
-# fires_union = st_buffer(fires_union, 0)  # Change to 0 to avoid creating gaps
-# # Add id column, group split union_sf by id
-# fires_union$group_id = 1:nrow(fires_union)
-# fires_split = fires_union %>%
-#   group_split(group_id)
-# 
-# fire_groups = lapply(fires_split, function(chunk, fires2 = fires){
-#   
-#   chunk_int = st_intersects(fires2, chunk, sparse = FALSE)[,1]
-#   
-#   print(paste("Processing chunk:", chunk$group_id))
-#   
-#   fire_intersects = fires2[chunk_int,]
-#   
-#   if(nrow(fire_intersects) == 0) {
-#     print(paste("No fires intersect with chunk", chunk$group_id))
-#     return(NULL)
-#   }
-#   
-#   result = tryCatch({
-#     st_intersection(fire_intersects)
-#   }, error = function(e) {
-#     print(paste("Error in chunk", chunk$group_id, ". Simplifying geometries and retrying..."))
-#     
-#     # Simplify the problem geometries
-#     simplified_geometries = st_simplify(st_geometry(fire_intersects), dTolerance = 5)
-#     
-#     # Replace the geometries in fire_intersects with the simplified ones
-#     st_geometry(fire_intersects) = simplified_geometries
-#     
-#     # Retry the intersection with simplified geometries
-#     tryCatch({
-#       st_intersection(fire_intersects)
-#     }, error = function(e) {
-#       print(paste("Intersection failed for chunk", chunk$group_id, "even with simplified geometries."))
-#       print("Returning original geometries without intersection.")
-#       return(fire_intersects)
-#     })
-#   })
-#   
-#   return(result)
-# })
-# 
-# # Remove NULL results
-# fire_groups = fire_groups[!sapply(fire_groups, is.null)]
-# 
-# # Check if all fires are included
-# all_group_fires = unique(unlist(lapply(fire_groups, function(group) group$Event_ID)))
-# fires_not_in_groups = setdiff(fires$Event_ID, all_group_fires)
-# 
-# if(length(fires_not_in_groups) > 0) {
-#   print(paste("Warning:", length(fires_not_in_groups), "fires are not in any group"))
-#   # Add these fires as individual groups
-#   for(fire_id in fires_not_in_groups) {
-#     fire_groups[[length(fire_groups) + 1]] = fires[fires$Event_ID == fire_id,]
-#   }
-# }
-# 
-# print(paste("Total number of groups:", length(fire_groups)))
-# print(paste("Total number of unique fires in groups:", length(unique(unlist(lapply(fire_groups, function(group) group$Event_ID))))))
-# print(paste("Total number of fires in original data:", nrow(fires)))
-# 
 
 # Filter out activities completed before study period
 facts <- facts %>%

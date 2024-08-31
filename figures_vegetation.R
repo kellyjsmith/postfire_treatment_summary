@@ -225,3 +225,110 @@ print(Combined_Treatments_Veg_Type)
 ggsave("Combined_Treatments_Veg_Type.png", Combined_Treatments_Veg_Type, width = 7, height = 6)
 
 
+library(patchwork)
+
+treatment_percentages_by_veg_type <- function(veg_summary) {
+  # Prepare data
+  treatment_data <- veg_summary %>%
+    filter(Category %in% c("All Activities", "Total Burned"),
+           type_labels %in% c("Initial Planting", "Fill-in or Replant", "TSI - Release", 
+                              "Harvest - Salvage", "Site Prep - Mechanical", "Site Prep - Other", 
+                              "Site Prep - Chemical", "TSI - Thin") | Category == "Total Burned") %>%
+    select(Category, type_labels, Ig_Year, Conifer_acres_percent, Shrubland_acres_percent, 
+           Hardwood_acres_percent, Other_acres_percent) %>%
+    pivot_longer(cols = c(Conifer_acres_percent, Shrubland_acres_percent, 
+                          Hardwood_acres_percent, Other_acres_percent),
+                 names_to = "Veg_Type",
+                 values_to = "Percentage") %>%
+    mutate(Veg_Type = gsub("_acres_percent", "", Veg_Type))
+  
+  # Calculate overall percentages
+  overall_percentages <- treatment_data %>%
+    group_by(Category, type_labels, Veg_Type) %>%
+    summarize(Overall_Percentage = mean(Percentage, na.rm = TRUE), .groups = "drop")
+  
+  # Set factor levels for proper ordering
+  treatment_types <- c("Initial Planting", "Fill-in or Replant", "TSI - Release", 
+                       "Harvest - Salvage", "Site Prep - Mechanical", 
+                       "Site Prep - Chemical", "Site Prep - Other", "TSI - Thin")
+  veg_levels <- c("Conifer", "Shrubland", "Hardwood", "Other")
+  
+  overall_percentages$type_labels <- factor(overall_percentages$type_labels, levels = c(treatment_types, "Total Burned"))
+  overall_percentages$Veg_Type <- factor(overall_percentages$Veg_Type, levels = veg_levels)
+  
+  # Color palette
+  veg_colors <- c("Conifer" = "springgreen4", 
+                  "Shrubland" = "goldenrod", 
+                  "Hardwood" = "purple2",
+                  "Other" = "gray70")
+  
+  # Create summary plot for treatment types
+  summary_plot_treatments <- ggplot(overall_percentages %>% filter(Category == "All Activities"), 
+                                    aes(x = fct_rev(type_labels), y = Overall_Percentage, fill = fct_rev(Veg_Type))) +
+    geom_col(position = "stack", color = "black", size = 0.1) +
+    scale_fill_manual(values = veg_colors, name = "Vegetation Type") +
+    labs(title = NULL,
+         subtitle = NULL,
+         x = "Treatment Type",
+         y = "Percentage of Total Net Acres") +
+    theme_bw(base_size = 10) +
+    theme(
+      axis.text.x = element_text(hjust = 0.5, angle = 0),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      legend.text = element_text(size = 9),
+      legend.title = element_text(face = "bold", size = 10), 
+      plot.title = element_text(face = "bold", size = 11),
+      plot.subtitle = element_text(size = 10),
+      plot.margin = margin(10, 10, 10, 10),
+      axis.title = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 9),
+      legend.position = "none"
+    ) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    coord_flip()
+  
+  # Create summary plot for total burned area
+  summary_plot_total_burned <- ggplot(overall_percentages %>% filter(Category == "Total Burned"), 
+                                      aes(x = Category, y = Overall_Percentage, fill = fct_rev(Veg_Type))) +
+    geom_col(position = "stack", color = "black", size = 0.1) +
+    scale_fill_manual(values = veg_colors, name = "Vegetation Type") +
+    labs(title = NULL,
+         x = NULL,
+         y = "Percentage of Total Burned Acres") +
+    theme_bw(base_size = 10) +
+    theme(
+      axis.title.y = element_text(margin = margin(r = 10)),
+      legend.text = element_text(size = 9),
+      legend.title = element_text(face = "bold", size = 10), 
+      plot.title = element_text(face = "bold", size = 11),
+      plot.subtitle = element_text(size = 10),
+      plot.margin = margin(10, 10, 10, 10),
+      axis.title = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 9),
+      legend.position = "bottom",
+      legend.justification = "center"
+    ) +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    coord_flip() +
+    guides(fill = guide_legend(nrow = 1, reverse = TRUE))
+  
+  # Combine plots using patchwork
+  combined_summary_plot <- summary_plot_treatments / summary_plot_total_burned +
+    plot_layout(heights = c(7, 1)) +
+    plot_annotation(
+      title = "Overall Distribution of Vegetation Types",
+      subtitle = "By Treatment Type and Total Burned Area, USFS R5 Fires - 2000-2021",
+      theme = theme(plot.title = element_text(face = "bold", size = 12),
+                    plot.subtitle = element_text(size = 11))
+    )
+  
+  return(combined_summary_plot)
+}
+
+# Generate plot
+Treatment_Percentages_By_Veg_Type <- treatment_percentages_by_veg_type(veg_summary)
+
+# Save the summary plot
+ggsave("Treatment_Percentages_By_Veg_Type_Summary.png", Treatment_Percentages_By_Veg_Type, width = 7, height = 4)
+
+

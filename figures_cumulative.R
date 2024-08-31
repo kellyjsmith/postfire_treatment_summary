@@ -10,15 +10,20 @@ library(grid)
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
+all_activities = readRDS("all_activities.RDS")
+net_activities = readRDS("net_activities.RDS")
+
+
 combined_cumulative = readRDS("combined_cumulative.RDS")
 severity_by_year = readRDS("severity_by_year.RDS")
+severity_summary = readRDS("severity_summary.RDS")
 burned_area_by_year = readRDS("burned_area_by_year.RDS")
 
 combined_cumulative <- combined_cumulative %>%
   filter(end_year < 2022)
 # severity_by_year<- severity_by_year %>%
 #   filter(Ig_Year < 2022)
-severity_summary<- severity_summary %>%
+severity_summary <- severity_summary %>%
   filter(Ig_Year < 2022)
 # burned_area_by_year<- burned_area_by_year %>%
 #   filter(Ig_Year < 2022)
@@ -31,7 +36,7 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
   cumulative_burned_severity <- severity_summary %>%
     st_drop_geometry() %>%
     filter(Category == "Total Burned") %>%
-    select(Ig_Year, Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres) %>%
+    select(Ig_Year, Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres, Increased_Greenness_acres) %>%
     pivot_longer(cols = -c(Ig_Year, Category),
                  names_to = "Severity",
                  values_to = "Acres") %>%
@@ -39,7 +44,8 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
       Severity == "Unburned_to_Low_acres" ~ "Unburned to Low",
       Severity == "Low_acres" ~ "Low",
       Severity == "Moderate_acres" ~ "Moderate",
-      Severity == "High_acres" ~ "High"
+      Severity == "High_acres" ~ "High",
+      Severity == "Increased_Greenness_acres" ~ "Increased Greenness"
     )) %>%
     group_by(Ig_Year, Severity) %>%
     summarise(Acres = sum(Acres)) %>%
@@ -63,17 +69,29 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
   # Combine datasets
   combined_data <- bind_rows(
     cumulative_burned_severity %>% rename(Year = Ig_Year),
-    planting_data %>% rename(Year = end_year)
+    planting_data %>% rename(Year = end_year),
   )
   
   # Set factor levels for Severity and Metric
-  severity_levels <- c("Unburned to Low", "Low", "Moderate", "High")
+  severity_levels <- c("Increased Greenness", "Unburned to Low", "Low", "Moderate", "High")
   combined_data$Severity <- factor(combined_data$Severity, levels = severity_levels)
   combined_data$Type <- factor(combined_data$Type, levels = c("Postfire Planting Acres", "Burned Acres by Severity"))
-
   
   min_year <- min(combined_data$Year)
   max_year <- max(combined_data$Year)
+  
+  # Calculate max cumulative values
+  max_planted_gross <- max(planting_data$Acres[planting_data$Metric == "Gross Acres to Date"])
+  max_planted_net <- max(planting_data$Acres[planting_data$Metric == "Net Acres to Date"])
+  
+  max_burned_by_severity <- cumulative_burned_severity %>%
+    filter(Ig_Year == max(Ig_Year)) %>%
+    group_by(Severity) %>%
+    summarize(max_burned = sum(Cumulative_Acres)) %>%
+    mutate(label = paste0(Severity, ": ", scales::comma(max_burned)))
+  max_burned_by_severity$label = factor(max_burned_by_severity$label, levels = severity_levels)
+  
+  total_burned <- sum(max_burned_by_severity$max_burned)
   
   # Create the plot
   ggplot() +
@@ -86,7 +104,8 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
               aes(x = Year, y = Cumulative_Acres, fill = Severity), 
               alpha = 0.7) +
     # Color scales
-    scale_fill_manual(values = c("Unburned to Low" = "darkgreen", 
+    scale_fill_manual(values = c("Increased Greenness" = "limegreen",
+                                 "Unburned to Low" = "darkgreen", 
                                  "Low" = "skyblue", 
                                  "Moderate" = "yellow2", 
                                  "High" = "red"),
@@ -109,7 +128,6 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
       legend.location = "plot",
       legend.title = element_text(face = "bold", size = 11),
       legend.text = element_text(size = 10),
-      # axis.text.x.top = element_text(size = 10, hjust = 1),
       axis.text = element_text(size = 11),
       axis.title = element_text(face = "bold", size = 11),
       plot.title = element_text(face = "bold", size = 12),
@@ -121,11 +139,76 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
                        limits = c(min_year, max_year)) +
     scale_y_continuous(labels = scales::comma_format()) +
     guides(fill = guide_legend(order = 2, nrow = 1),
-           color = guide_legend(order = 1)) 
+           color = guide_legend(order = 1))  +
+    # Add text annotations for max cumulative values
+    geom_text(data = data.frame(
+      Type = c("Postfire Planting Acres", "Postfire Planting Acres", 
+               rep("Burned Acres by Severity", 6)),
+      label = c(paste("Cumulative Net:", scales::comma(max_planted_net)),
+                paste("Cumulative Gross:", scales::comma(max_planted_gross)),
+                max_burned_by_severity$label,
+                paste("Total Cumulative:", scales::comma(total_burned))),
+      x = rep(mean(c(min_year, max_year)), 8),  # Center the labels horizontally
+      y = rep(Inf, 8),
+      vjust = c(3.5, 2, 9.5, 8, 6.5, 5, 3.5, 2)
+    ),
+    aes(x = x, y = y, label = label, vjust = vjust),
+    hjust = 0.5, size = 3.5)
 }
 
 cumulative_planted_severity <- cumulative_planted_severity_plot(combined_cumulative, severity_summary)
-ggsave("cumulative_planted_severity.png", cumulative_planted_severity, width = 7, height = 6)
+print(cumulative_planted_severity)
+
+ggsave("cumulative_planted_severity.png", cumulative_planted_severity, width = 7, height = 5)
+
+#### Cumulative % Planted ####
+
+# Calculate cumulative burned acres
+cumulative_burned_total <- severity_summary %>%
+  st_drop_geometry() %>%
+  filter(Category == "Total Burned") %>%
+  ungroup() %>%
+  select(Ig_Year, Total_acres) %>%
+  arrange(Ig_Year) %>%
+  mutate(cumulative_burned_acres = cumsum(Total_acres))
+
+# Calculate cumulative planted acres
+planting_data <- combined_cumulative %>% 
+  filter(type_labels == "Initial Planting") %>%
+  select(end_year, net_acres)
+  
+
+# Calculate percentage of planted to burned
+percentage_data <-  planting_data %>%
+  left_join(cumulative_burned_total, by = c("end_year" = "Ig_Year")) %>%
+  mutate(Percentage = (net_acres / cumulative_burned_acres) * 100)
+
+# Create the percentage plot
+percentage_plot <- ggplot(percentage_data, aes(x = end_year, y = Percentage)) +
+  geom_line(color = "darkgreen", size = 1.25) +
+  geom_point(color = "darkgreen", size = 3) +
+  labs(title = "Cumulative Percentage of Burned Area Planted",
+       subtitle = "USFS Region 5, 2000 - 2021",
+       x = "Year", 
+       y = "Percentage") +
+  theme_bw(base_size = 11) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 11),
+        axis.title = element_text(face = "bold", size = 11),
+        axis.text = element_text(size = 11),
+        panel.grid.minor = element_blank()) +
+  scale_x_continuous(breaks = seq(min(percentage_data$end_year), 
+                                  max(percentage_data$end_year), 
+                                  by = 2)) +
+  scale_y_continuous(limits = c(0, 2.2),
+                     labels = scales::percent_format(scale = 1, accuracy = 0.1),
+                     breaks = seq(0, 2.5, by = 0.5))
+
+# Display the plot
+print(percentage_plot)
+
+# Save the plot
+ggsave("cumulative_percentage_planted.png", percentage_plot, width = 7, height = 2, dpi = 300)
 
 
 #### Cumulative Treatments ####
