@@ -1,5 +1,4 @@
 library("sf")
-library("jsonlite")
 library("terra")
 library("tidyverse")
 library("mapview")
@@ -9,9 +8,9 @@ library("doParallel")
 library("units")
 
 # Define fields to keep from the FACTS database
-keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
-          "ACTIVITY_C","ACTIVITY","LOCAL_QUAL","METHOD","FUND_CODES",
-          "ISWUI","REFORESTAT","PRODUCTIVI","LAND_SUITA","FS_UNIT_ID")
+keep <- c("year", "ACTIVITY", "METHOD", "EQUIPMENT","DATE_COMPL", "GIS_ACRES", "PURPOSE_CO", 
+          "TREATMENT_", "REFORESTAT", "PRODUCTIVI", "LAND_SUITA",  "FUND_CODES", "COST_PER_U", 
+          "ISWUI", "ACTIVITY_C", "ADMIN_FORE", "ADMIN_DIST","FACTS_ID", "SUID", "SUBUNIT", "CRC_VALUE")
 
 # Define reforestation management categories ####
 
@@ -19,11 +18,6 @@ keep <- c("FACTS_ID","SUID","CRC_VALUE","DATE_COMPL","GIS_ACRES","PURPOSE_CO",
 Certified_Planted <- "Certification-Planted"
 Certified_TSI_Release = "TSI Certification - Release/weeding"
 Certification = c(Certified_Planted, Certified_TSI_Release)
-
-# Fuels_Fire <- c("Burning of Piled Material","Underburn - Low Intensity (Majority of Unit)",
-#            "Broadcast Burning - Covers a majority of the unit")
-# Fuels_Other <- c("Piling of Fuels, Hand or Machine","Yarding - Removal of Fuels by Carrying or Dragging",
-#                 "Rearrangement of Fuels","Chipping of Fuels","Compacting/Crushing of Fuels","Thinning for Hazardous Fuels Reduction")
 
 # Harvest
 Harvest_NonSalv = c("Stand Clearcut (EA/RH/FH)","Overstory Removal Cut (from advanced regeneration) (EA/RH/FH)",
@@ -45,19 +39,21 @@ Reforestation = c(Plant, Replant)
 
 # Site Prep
 SitePrep_Chem = "Site Preparation for Planting - Chemical"
-SitePrep_Mech <- c("Site Preparation for Planting - Mechanical")
-SitePrep_Other = c("Site Preparation for Planting - Manual","Site Preparation for Planting - Burning",
-                   "Site Preparation for Planting - Other")
-SitePrep = c(SitePrep_Chem, SitePrep_Mech, SitePrep_Other)
+# SitePrep_Mech <- c("Site Preparation for Planting - Mechanical")
+# SitePrep_Other = c("Site Preparation for Planting - Manual","Site Preparation for Planting - Burning",
+#                    "Site Preparation for Planting - Other")
+SitePrep_NonChem = c("Site Preparation for Planting - Manual","Site Preparation for Planting - Burning",
+                     "Site Preparation for Planting - Other", "Site Preparation for Planting - Mechanical")
+SitePrep = c(SitePrep_Chem, SitePrep_NonChem)
 
 # Survey
-Silv_Prescription = "Stand Silviculture Prescription"
 Stand_Exam = c("Silvicultural Stand Examination", "Low Intensity Stand Examination")
-# Survey_Other = c("Vegetative Competition Survey","Post Treatment Vegetation Monitoring", "Stand Diagnosis Prepared")
-# Survey_Pretreatment = c("Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation")
+Survey_Other = c("Vegetative Competition Survey", "Post Treatment Vegetation Monitoring",
+                 "Stand Silviculture Prescription", "Stand Diagnosis Prepared",
+                 "Pretreatment Exam for Release or Precommercial Thinning","Pretreatment Exam for Reforestation")
 Survey_Stocking <- "Stocking Survey"
 Survey_Survival = "Plantation Survival Survey"
-Survey = c(Silv_Prescription, Stand_Exam, Survey_Stocking, Survey_Survival)
+Survey = c(Survey_Other, Stand_Exam, Survey_Stocking, Survey_Survival)
 
 # Thin
 # TSI_Prune <- c("Pruning to Raise Canopy Height and Discourage Crown Fire","Prune")
@@ -65,10 +61,7 @@ TSI_Release <- c("Tree Release and Weed", "Control of Understory Vegetation")
 TSI_Thin <- c("Precommercial Thin","Commercial Thin","Single-tree Selection Cut (UA/RH/FH)")
 TSI = c(TSI_Release, TSI_Thin)
 
-types = c("Certified_Planted","Certified_TSI_Release","Harvest_NonSalv","Harvest_Salvage",
-          "Need_by_Failure","Need_by_Fire", "Need_by_Harvest","Plant","Replant",
-          "SitePrep_Chem","SitePrep_Mech","SitePrep_Other","Stand_Exam",
-          "Survey_Stocking","Survey_Survival","Silv_Prescription","TSI_Release","TSI_Thin")
+
 
 treat = c(Harvest, Reforestation, SitePrep, TSI)
 monitor = c(Certification, Need, Survey)
@@ -78,7 +71,7 @@ manage.except.plant = manage[manage != Plant]
 
 # Function to prepare fire layer
 prepare_fires <- function(fires, nfs_r5) {
-
+  
   # Ensure valid geometries and filter for polygons
   fires <- fires %>%
     st_make_valid() %>%
@@ -93,12 +86,13 @@ prepare_fires <- function(fires, nfs_r5) {
   # Clip fires to R5 NF layer
   nfs_r5_union <- st_union(nfs_r5)
   fires <- st_intersection(fires, nfs_r5_union)
-
+  
   # Add fire area
   fires$fire_area <- st_area(fires)
   
   return(fires)
 }
+
 
 # Function to prepare FACTS layer
 prepare_facts <- function(facts){
@@ -107,11 +101,6 @@ prepare_facts <- function(facts){
   
   # Rename acreage fields
   facts$ACRES_COMPLETED = facts$NBR_UNITS1
-  
-  # Manage date fields -- only include records with a completed date and add "year"
-  # facts <- facts |> filter(!is.na(DATE_C))
-  facts$DATE_COMPL <- ymd(as.character(facts$DATE_COMPL))
-  facts$year <- year(facts$DATE_COMPL)
   
   # Compute geometric parameters of facts polygons
   facts$activity_area <- as.numeric(st_area(facts))
@@ -130,87 +119,20 @@ prepare_facts <- function(facts){
   return(facts)
 }
 
-# ## NEW VERSION ##
-# self_intersect <- function(fire_groups, precision=100, area_threshold=0){
-#   processed_groups <- lapply(fire_groups, function(group) {
-#     if(!is.null(precision)){
-#       st_precision(group) <- precision
-#     }
-#     group <- st_make_valid(group)
-#     
-#     group <- group[st_dimension(group)==2,]
-#     group$area <- as.double(st_area(group))
-#     
-#     return(group[group$area > area_threshold,])
-#   })
-#   
-#   # Find all unique column names across all groups
-#   all_cols <- unique(unlist(lapply(processed_groups, names)))
-#   
-#   # Ensure each group has all columns
-#   processed_groups <- lapply(processed_groups, function(group) {
-#     missing_cols <- setdiff(all_cols, names(group))
-#     for (col in missing_cols) {
-#       group[[col]] <- NA
-#     }
-#     return(group[, all_cols])  # Reorder columns to ensure consistency
-#   })
-#   
-#   # Combine all processed groups
-#   result <- do.call(rbind, processed_groups)
-#   
-#   # Ensure the result has all the columns from the original fires object
-#   required_cols <- c("Event_ID", "Ig_Year", "fire_area")
-#   for (col in required_cols) {
-#     if (!col %in% names(result)) {
-#       result[[col]] <- NA
-#     }
-#   }
-#   
-#   return(result)
-# }
-# 
-# # Wrapper function to convert fire_groups to a format compatible with original functions
-# create_intersected_fires <- try(function(fire_groups, original_fires) {
-#   fires_fires <- self_intersect(fire_groups)
-#   
-#   # Add any missing columns from original_fires
-#   for (col in names(original_fires)) {
-#     if (!col %in% names(fires_fires)) {
-#       fires_fires[[col]] <- NA
-#     }
-#   }
-#   
-#   # Diagnostic output
-#   print(paste("Number of rows in fires_fires:", nrow(fires_fires)))
-#   print(paste("Number of geometries in original_fires:", length(st_geometry(original_fires))))
-#   
-#   # # Check if the number of rows matches the number of geometries
-#   # if (nrow(fires_fires) != length(st_geometry(original_fires))) {
-#   #   warning("Number of rows in fires_fires doesn't match the number of geometries in original_fires. Using the geometry from fires_fires.")
-#   #   return(fires_fires)
-#   # }
-#   # 
-#   # # If the numbers match, assign the geometry from original_fires
-#   # st_geometry(fires_fires) <- st_geometry(original_fires)
-#   # 
-#   return(fires_fires)
-# })
 
-## ORIGINAL VERSION ##
 # Function to self intersect fire polygons
 self_intersect <- function(polygons, precision=100, area_threshold=0){
-
+  
   if(!is.null(precision)){
     st_precision(polygons)<-precision
   }
-  polygons<-st_make_valid(polygons)
-  
+  polygons <- st_collection_extract(polygons)
+  polygons <- st_make_valid(polygons)
   polygons<- st_intersection(polygons)
-
-  polygons <- polygons[st_dimension(polygons)==2,]
+  
+  # polygons <- polygons[st_dimension(polygons)==2,]
   polygons$area <- as.double(st_area(polygons))
-
+  
   return(polygons[polygons$area>area_threshold,])
 }
 
@@ -235,17 +157,18 @@ cross_facts_fire<-function(polygon, fires_fires){
 }
 
 
-## ORIGINAL VERSION ##
+
 # Function to intersect facts layer with fire layer
 # call "precision" to remove topology errors and "cores" for parallel processing
+
 intersect_activities <- function(activities, fires, precision, cores){
-
+  
   on.exit(try(stopCluster(cl)))
-
+  
   # Self-intersect fire layer and create ID to track facts polygon
   fires_fires<-self_intersect(fires, area_threshold = 0)
   facts_polygon_id <- activities$facts_polygon_id
-
+  
   # Return all intersecting and non-intersecting facts polygons within the fire layer
   intersecting <- st_intersects(fires_fires, activities)
   intersecting <- sort(unique(unlist(intersecting)))
@@ -254,10 +177,10 @@ intersect_activities <- function(activities, fires, precision, cores){
   activities <- activities[intersecting, ]
   intersecting <- activities$facts_polygon_id
   not_intersecting <- setdiff(facts_polygon_id, intersecting)
-
+  
   # Split the data frame containing intersecting facts activities by facts_polygon_id
   activities <- activities %>% group_split(facts_polygon_id)
-
+  
   print("Starting intersection")
   print(Sys.time())
   loaded  <-  .packages()
@@ -270,7 +193,7 @@ intersect_activities <- function(activities, fires, precision, cores){
   )  %dopar%  {
     cross_facts_fire(x, fires_fires)
   }
-
+  
   n  <-  length(fires_activities)
   group_ids  <-
     data.frame(ids  =  1:n, group  =  sample(1:cores, n, replace  =  TRUE))
@@ -278,20 +201,20 @@ intersect_activities <- function(activities, fires, precision, cores){
     ids  <-  group_ids[group_ids$group  ==  x, "ids"]
     fires_activities[ids]
   })
-
+  
   fires_activities <- foreach(
     x = result_parts,
     .packages = loaded,
     .combine = rbind) %dopar% {do.call(rbind, x)}
-
+  
   stopCluster(cl)
   print("Intersection finished")
   print(Sys.time())
-
+  
   fires_activities <- st_as_sf(fires_activities)
   missing_intersecting  <-
     intersecting[!intersecting  %in%  fires_activities$facts_polygon_id]
-
+  
   return(
     list(
       activities  =  activities,
@@ -306,152 +229,10 @@ intersect_activities <- function(activities, fires, precision, cores){
 }
 
 
-## NEW VERSION ##
-# Function to intersect facts layer with fire layer
-
-## Determined the chunking in this approach doesn't intersect properly
-
-# call "precision" to remove topology errors and "cores" for parallel processing
-# intersect_activities <- function(activities, fires, precision, cores){
-#   on.exit(try(stopCluster(cl)))
-#   
-#   # Process fires in smaller chunks
-#   chunk_size <- 50  # Adjust as needed
-#   fire_chunks <- split(fires, ceiling(seq_len(nrow(fires))/chunk_size))
-#   
-#   fires_fires_list <- lapply(fire_chunks, function(chunk) {
-#     tryCatch({
-#       self_intersect(chunk, precision = precision)
-#     }, error = function(e) {
-#       message("Error processing chunk: ", e$message)
-#       return(NULL)
-#     })
-#   })
-#   
-#   # Remove NULL results and combine
-#   fires_fires_list <- fires_fires_list[!sapply(fires_fires_list, is.null)]
-#   fires_fires <- do.call(rbind, fires_fires_list)
-#   
-#   if(is.null(fires_fires) || nrow(fires_fires) == 0) {
-#     stop("No valid fire polygons after processing")
-#   }
-#   
-#   print("Fire polygons processed")
-#   print(Sys.time())
-#   
-#   facts_polygon_id <- activities$facts_polygon_id
-#   
-#   # Use st_intersects for initial filtering
-#   intersecting <- st_intersects(fires_fires, activities)
-#   intersecting <- sort(unique(unlist(intersecting)))
-#   activities <- activities[intersecting, ]
-#   intersecting <- activities$facts_polygon_id
-#   not_intersecting <- setdiff(facts_polygon_id, intersecting)
-#   
-#   print("Initial filtering completed")
-#   print(Sys.time())
-#   
-#   activities <- activities %>% group_split(facts_polygon_id)
-#   
-#   print("Starting intersection")
-#   print(Sys.time())
-#   loaded <- .packages()
-#   cl <- makeCluster(cores)
-#   registerDoParallel(cl)
-#   
-#   fires_activities <- foreach(
-#     x = activities,
-#     .packages = loaded,
-#     .export = "cross_facts_fire"
-#   ) %dopar% {
-#     cross_facts_fire(x, fires_fires)
-#   }
-#   
-#   stopCluster(cl)
-#   print("Intersection finished")
-#   print(Sys.time())
-#   
-#   print("Starting to combine results")
-#   fires_activities <- tryCatch({
-#     result <- do.call(rbind, fires_activities)
-#     print("Results combined")
-#     result
-#   }, error = function(e) {
-#     print(paste("Error combining results:", e$message))
-#     return(NULL)
-#   })
-#   
-#   if(!is.null(fires_activities)) {
-#     print("Converting to sf object")
-#     fires_activities <- tryCatch({
-#       result <- st_as_sf(fires_activities)
-#       print("Conversion to sf object completed")
-#       result
-#     }, error = function(e) {
-#       print(paste("Error converting to sf object:", e$message))
-#       return(NULL)
-#     })
-#   }
-#   
-#   print("Calculating missing intersecting")
-#   missing_intersecting <- intersecting[!intersecting %in% fires_activities$facts_polygon_id]
-#   
-#   print("Preparing return list")
-#   return_list <- list(
-#     activities = activities,
-#     fires = fires,
-#     fires_fires = fires_fires,
-#     fires_activities = fires_activities,
-#     intersecting = intersecting,
-#     not_intersecting = not_intersecting,
-#     missing_intersecting = missing_intersecting
-#   )
-#   
-#   print("Function completed")
-#   print(Sys.time())
-#   
-#   return(return_list)
-# }
-
-# # Function for summarizing fires_activities for overlapping fires
-# assign_activities <- function(fires_activities, fires){
-#   
-#   for(i in 1:nrow(fires_activities)){
-#     # if activity year is NA there is no way to assign fires
-#     if(is.na(fires_activities$year[i])){
-#       fires_activities[i,"assigned_fire"]<-NA
-#       fires_activities[i,"flag"]<-0
-#       next
-#     }
-#     
-#     fires_i<-fires[fires_activities$origins[[i]],]
-#     fires_i<-fires_i[fires_i$Ig_Year<= fires_activities$year[i],]
-#     
-#     if(nrow(fires_i)==0){
-#       fires_activities[i,"assigned_fire"]<-NA
-#       fires_activities[i,"flag"]<-0
-#       next
-#     }
-#     
-#     if(nrow(fires_i)==1){
-#       fires_activities[i,"assigned_fire"]<-fires_i$Event_ID
-#       fires_activities[i,"flag"]<-1
-#     }else{
-#       fires_i$diff_time<-fires_activities$year[i]-fires_i$Ig_Year
-#       fires_activities[i,"flag"]<-length(fires_i$Event_ID)
-#       fires_i<-fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
-#       fires_i<-fires_i[fires_i$fire_area==max(fires_i$fire_area),]
-#       fires_activities[i,"assigned_fire"]<-fires_i$Event_ID[1]
-#     }
-#     
-#   }
-#   return(fires_activities)
-# }
-
 assign_activities <- function(fires_activities, fires){
   
-  # Create a dictionary to store the most recent fire assignment for each facts_polygon_id
-  polygon_fire_dict <- list()
+  # Pre-compute the number of intersecting fires for each facts_polygon_id
+  intersection_counts <- table(fires_activities$facts_polygon_id)
   
   for(i in 1:nrow(fires_activities)){
     # if activity year is NA there is no way to assign fires
@@ -461,47 +242,41 @@ assign_activities <- function(fires_activities, fires){
       next
     }
     
-    current_polygon_id <- fires_activities$facts_polygon_id[i]
-    
     fires_i <- fires[fires_activities$origins[[i]],]
     fires_i <- fires_i[fires_i$Ig_Year <= fires_activities$year[i],]
     
-    if(nrow(fires_i) == 0){
+    if(nrow(fires_i)==0){
       fires_activities[i,"assigned_fire"] <- NA
       fires_activities[i,"flag"] <- 0
       next
     }
     
-    if(nrow(fires_i) == 1){
-      assigned_fire <- fires_i$Event_ID
-      fires_activities[i,"flag"] <- 1
-    } else {
+    # Set the flag based on the pre-computed intersection count
+    fires_activities[i,"flag"] <- intersection_counts[as.character(fires_activities$facts_polygon_id[i])]
+    
+    if(nrow(fires_i)==1){
+      fires_activities[i,"assigned_fire"] <- fires_i$Event_ID
+      fires_activities[i,"assigned_fire_year"] <- fires_i$Ig_Year
+    }else{
       fires_i$diff_time <- fires_activities$year[i] - fires_i$Ig_Year
-      fires_activities[i,"flag"] <- length(fires_i$Event_ID)
-      fires_i <- fires_i[which(fires_i$diff_time == min(fires_i$diff_time)),]
-      fires_i <- fires_i[fires_i$fire_area == max(fires_i$fire_area),]
-      assigned_fire <- fires_i$Event_ID[1]
+      fires_i <- fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
+      fires_i <- fires_i[fires_i$fire_area==max(fires_i$fire_area),]
+      fires_activities[i,"assigned_fire"] <- fires_i$Event_ID[1]
+      fires_activities[i,"assigned_fire_year"] <- fires_i$Ig_Year[1]
     }
-    
-    # Check if we have a previous assignment for this polygon
-    if(!is.null(polygon_fire_dict[[current_polygon_id]])){
-      previous_fire <- polygon_fire_dict[[current_polygon_id]]
-      previous_fire_year <- fires$Ig_Year[fires$Event_ID == previous_fire]
-      
-      # If the current assignment is older than the previous one, use the previous assignment
-      if(fires_i$Ig_Year[fires_i$Event_ID == assigned_fire] < previous_fire_year){
-        assigned_fire <- previous_fire
-      }
-    }
-    
-    # Update the dictionary with the most recent fire assignment
-    polygon_fire_dict[[current_polygon_id]] <- assigned_fire
-    
-    fires_activities[i,"assigned_fire"] <- assigned_fire
   }
+  
+  # Filter out duplicates, keeping the record with the max Ig_Year when flag > 1
+  fires_activities <- fires_activities %>%
+    group_by(facts_polygon_id) %>%
+    filter(flag <= 1 | (flag > 1 & assigned_fire_year == max(assigned_fire_year))) %>%
+    ungroup()
   
   return(fires_activities)
 }
+
+
+
 
 # Parallel processing the assignment function
 assign_activities_parallel <- function(fires_activities, fires, cores){
@@ -534,29 +309,175 @@ assign_activities_parallel <- function(fires_activities, fires, cores){
 
 
 
+
+# 
+# intersect_activities <- function(activities, fires, precision, cores) {
+#   on.exit(try(stopCluster(cl)))
+#   
+#   # Self-intersect fire layer and create ID to track facts polygon
+#   fires_fires <- self_intersect(fires, area_threshold = 0)
+#   facts_polygon_id <- activities$facts_polygon_id
+#   
+#   # Return all intersecting and non-intersecting facts polygons within the fire layer
+#   intersecting <- st_intersects(fires_fires, activities)
+#   intersecting <- sort(unique(unlist(intersecting)))
+#   
+#   # Get only polygons that were detected by st_intersects
+#   activities <- activities[intersecting, ]
+#   intersecting <- activities$facts_polygon_id
+#   not_intersecting <- setdiff(facts_polygon_id, intersecting)
+#   
+#   # Cast geometries as polygons
+#   activities <- activities %>% 
+#     st_collection_extract("POLYGON") %>%
+#     st_cast("POLYGON")
+#   
+#   # Split the data frame containing intersecting facts activities by facts_polygon_id
+#   activities <- activities %>% group_split(facts_polygon_id)
+#   
+#   print("Starting intersection")
+#   print(Sys.time())
+#   loaded <- .packages()
+#   cl <- makeCluster(cores)
+#   registerDoParallel(cl)
+#   fires_activities <- foreach(
+#     x = activities,
+#     .packages = loaded,
+#     .export = "cross_facts_fire"
+#   ) %dopar% {
+#     cross_facts_fire(x, fires_fires)
+#   }
+#   
+#   stopCluster(cl)
+#   print("Intersection finished")
+#   print(Sys.time())
+#   
+#   # Combine results and recalculate geometries
+#   fires_activities <- do.call(rbind, fires_activities)
+#   fires_activities <- st_as_sf(fires_activities)
+#   
+#   # Recalculate facts_polygon_id
+#   fires_activities$facts_polygon_id <- seq_len(nrow(fires_activities))
+#   
+#   missing_intersecting <- intersecting[!intersecting %in% fires_activities$facts_polygon_id]
+#   
+#   return(
+#     list(
+#       activities = activities,
+#       fires = fires,
+#       fires_fires = fires_fires,
+#       fires_activities = fires_activities,
+#       intersecting = intersecting,
+#       not_intersecting = not_intersecting,
+#       missing_intersecting = missing_intersecting
+#     )
+#   )
+# }
+# 
+# # The assign_activities function can remain largely unchanged
+# assign_activities <- function(fires_activities, fires) {
+#   # Pre-compute the number of intersecting fires for each facts_polygon_id
+#   intersection_counts <- table(fires_activities$facts_polygon_id)
+#   
+#   for(i in 1:nrow(fires_activities)){
+#     if(is.na(fires_activities$year[i])){
+#       fires_activities[i,"assigned_fire"] <- NA
+#       fires_activities[i,"flag"] <- 0
+#       next
+#     }
+#     
+#     fires_i <- fires[fires_activities$origins[[i]],]
+#     fires_i <- fires_i[fires_i$Ig_Year <= fires_activities$year[i],]
+#     
+#     if(nrow(fires_i)==0){
+#       fires_activities[i,"assigned_fire"] <- NA
+#       fires_activities[i,"flag"] <- 0
+#       next
+#     }
+#     
+#     # Set the flag based on the pre-computed intersection count
+#     fires_activities[i,"flag"] <- intersection_counts[as.character(fires_activities$facts_polygon_id[i])]
+#     
+#     if(nrow(fires_i)==1){
+#       fires_activities[i,"assigned_fire"] <- fires_i$Event_ID
+#       fires_activities[i,"assigned_fire_year"] <- fires_i$Ig_Year
+#     }else{
+#       fires_i$diff_time <- fires_activities$year[i] - fires_i$Ig_Year
+#       fires_i <- fires_i[which(fires_i$diff_time==min(fires_i$diff_time)),]
+#       fires_i <- fires_i[fires_i$fire_area==max(fires_i$fire_area),]
+#       fires_activities[i,"assigned_fire"] <- fires_i$Event_ID[1]
+#       fires_activities[i,"assigned_fire_year"] <- fires_i$Ig_Year[1]
+#     }
+#   }
+#   
+#   # Filter out duplicates, keeping the record with the max Ig_Year when flag > 1
+#   fires_activities <- fires_activities %>%
+#     group_by(facts_polygon_id) %>%
+#     filter(flag <= 1 | (flag > 1 & assigned_fire_year == max(assigned_fire_year))) %>%
+#     ungroup()
+#   
+#   return(fires_activities)
+# }
+# 
+# # Parallelize function across group list
+# assign_activities_parallel <- function(fires_activities, fires, cores){
+#   on.exit(try(stopCluster(cl)))
+#   n <- dim(fires_activities)[1]
+#   group_ids <-
+#     data.frame(ids = 1:n, group = sample(1:cores, n, replace = TRUE))
+#   result_parts <- lapply(1:cores, function(x) {
+#     ids <- group_ids[group_ids$group == x, "ids"]
+#     fires_activities[ids,]
+#   })
+#   
+#   loaded <- .packages()
+#   cl <- makeCluster(cores)
+#   registerDoParallel(cl)
+#   fires_activities <- foreach(
+#     x = result_parts,
+#     .packages = loaded,
+#     .combine = rbind,
+#     .export = c("assign_activities")
+#   ) %dopar% {
+#     assign_activities(x,fires)
+#   }
+#   stopCluster(cl)
+#   
+#   fires_activities
+# }
+
+
+
 #### Read and prepare Fire and FACTS datasets ####
 
-# setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/postfire_treatment_summary")
+setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Data/")
 
+
+# Read in Administrative Region layer, filtered for REGION == 05 in Arc
 nfs_r5 = st_read(dsn = "../Data/CA_NFs_bounds.shp", stringsAsFactors = FALSE)
+
 # fires = st_read(dsn = "../Data/Severity/California_Fires.shp", stringsAsFactors = FALSE)
 facts <- st_read("../Data/facts_r5.shp")
-# facts2 <- st_read("F:\\Thesis\\EDW_Activity\\July2024\\facts_r5_2024.shp")
 
 fires = st_read("../Data/mtbs_perims_DD.shp")
 fires$Ig_Year = year(fires$Ig_Date)
 
+
+# Filter out fires outside the study period
 fires = fires %>%
   mutate(Ig_Year = as.numeric(as.character(fires$Ig_Year))) %>%
   filter(Incid_Type == "Wildfire") %>%
-  filter(Ig_Year>1999 & Ig_Year<2023)
+  filter(Ig_Year>1999 & Ig_Year<2022)
 
-fires <- prepare_fires(fires,nfs_r5)
+# Run function to prepare fires
+fires <- prepare_fires(fires, nfs_r5)
 
 
-# Filter out activities completed before study period
+# Manage date fields and filter out activities completed outside the study period
+# We are including activities through the end of 2022
 facts <- facts %>%
-  filter(FISCAL_Y_2 > 1999 & FISCAL_Y_2 < 2024)
+  mutate(year = year(DATE_COMPL)) %>%
+  filter(year > 2000 & year < 2023)
 
 # Keep only reforestation-related activities and important fields
 facts <- facts[facts$ACTIVITY %in% manage,]
@@ -568,263 +489,113 @@ facts <- prepare_facts(facts)
 
 
 #### Conduct intersection and assign activities ####
-facts_fires <- intersect_activities(facts, fires, precision=100, cores=10)
-facts_fires$assigned_activities<-assign_activities_parallel(facts_fires$fires_activities,
-                                                            facts_fires$fires,10)
+facts_fires <- intersect_activities(facts, fires, precision = 100, cores = 10)
+facts_fires$assigned_activities <- assign_activities_parallel(
+  facts_fires$fires_activities, facts_fires$fires, 10)
 
 # setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output/")
 
 saveRDS(facts_fires,"facts_fires_new.RDS")
 
+# facts_fires = readRDS("facts_fires_new.RDS")
+
+
 assigned_activities <- facts_fires$assigned_activities
 intersected_activities = facts_fires$fires_activities
 fires <- facts_fires$fires
 
-st_write(fires, "R5_fires_00_22.shp")
+st_write(fires, "R5_fires_00_21.shp", append = FALSE)
 
-# assigned_activities = read("assigned_activities.RDS")
 
-# CLEANING ASSIGNED ACTIVITIES
+# Remove "pre-fire" activities, drop fire columns, re-merge with fires based on assigned_fire
 assigned_activities <- filter(assigned_activities,!is.na(assigned_fire))
-
-assigned_activities <- assigned_activities[,c(keep,"Event_ID","activity_area","facts_polygon_id","year","assigned_fire"),]
-
+assigned_activities <- assigned_activities[,c(keep,"Event_ID","activity_area","facts_polygon_id","assigned_fire"),]
 assigned_activities <- merge(assigned_activities,st_drop_geometry(fires),by.x="assigned_fire",by.y="Event_ID")
 
 # Replace Event_ID with assigned_fire 
 colnames(assigned_activities)[which(colnames(assigned_activities)=="assigned_fire")]<-"Event_ID"
 
-# CREATING difference between activity and fire year
+# Add diff_year and area fields
 assigned_activities$diff_years <- assigned_activities$year- assigned_activities$Ig_Year
-
-# CREATING GEOMETRY FIELDS (activity_fire_area is the "split" area; this is the geometry we want)
 assigned_activities$activity_fire_area <- st_area(assigned_activities)
-assigned_activities<-assigned_activities[as.numeric(assigned_activities$activity_fire_area)>0,]
-assigned_activities<-assigned_activities[!is.na(assigned_activities$activity_fire_area),]
+
+# Remove non-positive areas, NA areas, and point features
+assigned_activities <- assigned_activities[as.numeric(assigned_activities$activity_fire_area)>0,]
+assigned_activities <- assigned_activities[!is.na(assigned_activities$activity_fire_area),]
 assigned_activities <- assigned_activities[!st_geometry_type(assigned_activities)=="POINT",]
-good<-sapply(assigned_activities$geometry,function(x){
-  a<-try(st_cast(x,"MULTILINESTRING"))
-  !inherits(a,"try-error")
-})
-assigned_activities <- assigned_activities[good,]
-assigned_activities_perimeters <- st_sfc(lapply(assigned_activities$geometry,function(x){
-  if(st_geometry_type(x)=="GEOMETRYCOLLECTION"){
-    
-    x <- lapply(x,"[")
-    
-    keep <- sapply(x,function(y){
-      is_list(y)
-    })
-    print(keep)
-    x <- x[keep]
-    print(x)
-    print(length(x))
-    x <- st_multipolygon(x)
-  }
-  st_cast(x,"MULTILINESTRING")
-  
-}))
 
-assigned_activities$activity_fire_perim_length <- as.numeric(st_length(assigned_activities_perimeters))
-assigned_activities$activity_fire_p_a_ratio <- assigned_activities$activity_fire_perim_length/assigned_activities$activity_fire_area
-
-
-# CREATE IS_* fields
-fields <- c(types,"treat","manage","monitor","manage.except.plant")
-for(i in fields){
-  categories <- eval(parse(text=i))
-  is_cat1 <- assigned_activities$ACTIVITY%in%categories
-  is_cat2 <- intersected_activities$ACTIVITY%in%categories
-  assigned_activities[,paste0("IS_",i)]<-is_cat1
-  intersected_activities[,paste0("IS_",i)]<-is_cat2
-}
 
 # CREATE ACTIVITY TYPE
-types <- types
-assigned_activities$ACTIVITY_TYPE<-NA
-intersected_activities$ACTIVITY_TYPE<-NA
-for(i in types){
-  print(i)
+assigned_activities$ACTIVITY_TYPE <- NA
+intersected_activities$ACTIVITY_TYPE <- NA
+
+types = c("Certified_Planted","Certified_TSI_Release","Harvest_NonSalv","Harvest_Salvage",
+          "Need_by_Failure","Need_by_Fire","Need_by_Harvest","Plant","Replant",
+          "SitePrep_Chem","SitePrep_NonChem","Stand_Exam", "Survey_Other",
+          "Survey_Stocking","Survey_Survival","TSI_Release","TSI_Thin")
+
+for (i in types) {
   categories <- eval(parse(text=i))
   
-  is_cat1 <- assigned_activities$ACTIVITY%in%categories
-  assigned_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat1,i,assigned_activities$ACTIVITY_TYPE)
-  
-  is_cat2 <- intersected_activities$ACTIVITY%in%categories
-  intersected_activities[,"ACTIVITY_TYPE"]<-ifelse(is_cat2,i,intersected_activities$ACTIVITY_TYPE)
-} 
-
-new_labels = data.frame(
-  ACTIVITY_TYPE = c("Certified_Planted", "Certified_TSI_Release", 
-                    "Harvest_NonSalv", "Harvest_Salvage", "Need_by_Failure", "Need_by_Fire", "Need_by_Harvest","Plant", 
-                    "Replant", "SitePrep_Chem", "SitePrep_Mech", "SitePrep_Other", "Stand_Exam", 
-                    "Survey_Stocking", "Survey_Survival", 
-                    "Silv_Prescription", "TSI_Prune", "TSI_Release", "TSI_Thin"),
-  type_labels = c("Certification - Plant", "Certification - Release", 
-                  "Harvest - Non-Salvage", "Harvest - Salvage", 
-                  "Reforest. Need - Failure", "Reforest. Need - Fire","Reforest. Need - Harvest", "Initial Planting", 
-                  "Fill-in or Replant", "Site Prep - Chemical", "Site Prep - Mechanical", "Site Prep - Other", 
-                  "Stand Exam", "Stocking Survey", "Survival Survey", 
-                  "Silvicultural Prescription", "TSI - Prune", "TSI - Release", "TSI - Thin")
-)
-
-# Merge the new labels with assigned_activities
-assigned_activities = merge(assigned_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
-intersected_activities = merge(intersected_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
-
-
-# Add big_groups field
-big_groups = c("Certification", "Harvest", "Need", "Reforestation", "SitePrep", "Survey", "TSI")
-assigned_activities$big_groups <- NA
-intersected_activities$big_groups <- NA
-for (group in big_groups) {
-  group_activities <- eval(parse(text = group))
-  assigned_activities$big_groups[assigned_activities$ACTIVITY %in% group_activities] <- group
-  intersected_activities$big_groups[intersected_activities$ACTIVITY %in% group_activities] <- group
+  assigned_activities$ACTIVITY_TYPE <- ifelse(assigned_activities$ACTIVITY %in% categories, i, assigned_activities$ACTIVITY_TYPE)
+  intersected_activities$ACTIVITY_TYPE <- ifelse(intersected_activities$ACTIVITY %in% categories, i, intersected_activities$ACTIVITY_TYPE)
 }
 
-assigned_activities = assigned_activities %>%
-  filter(!is.na(type_labels))
-intersected_activities = intersected_activities %>% 
-  filter(!is.na(type_labels))
+# Separate Release types
+assigned_activities <- assigned_activities %>%
+  mutate(ACTIVITY_TYPE = case_when(
+    ACTIVITY_TYPE == "TSI_Release" & METHOD == "Chemical" ~ "Release_Chem",
+    ACTIVITY_TYPE == "TSI_Release" & METHOD != "Chemical" ~ "Release_NonChem",
+    TRUE ~ ACTIVITY_TYPE
+  ))
+intersected_activities <- intersected_activities %>%
+  mutate(ACTIVITY_TYPE = case_when(
+    ACTIVITY_TYPE == "TSI_Release" & METHOD == "Chemical" ~ "Release_Chem",
+    ACTIVITY_TYPE == "TSI_Release" & METHOD != "Chemical" ~ "Release_NonChem",
+    TRUE ~ ACTIVITY_TYPE
+  ))
+
+
+# Update with new labels
+new_labels <- data.frame(
+  ACTIVITY_TYPE = c("Certified_Planted", "Certified_TSI_Release","Harvest_NonSalv", "Harvest_Salvage", 
+                    "Need_by_Failure", "Need_by_Fire", "Need_by_Harvest", "Plant", 
+                    "Replant", "Stand_Exam", "Survey_Stocking", "Survey_Survival", 
+                    "Survey_Other", "TSI_Thin", "Release_Chem", "Release_NonChem",
+                    "SitePrep_Chem", "SitePrep_NonChem"),
+  type_labels = c("Certification - Plant", "Certification - Release", "Harvest - Non-Salvage", "Harvest - Salvage", 
+                  "Reforest. Need - Failure", "Reforest. Need - Fire", "Reforest. Need - Harvest", 
+                  "Initial Planting", "Fill-in or Replant", "Stand Exam", "Stocking Survey", 
+                  "Survival Survey", "Survey - Other","TSI - Thin", 
+                  "Release - Chemical", "Release - Non-Chemical",
+                  "Site Prep - Chemical", "Site Prep - Non-Chemical")
+)
+
+# Merge the new labels with assigned_activities and intersected_activities
+assigned_activities <- merge(assigned_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
+intersected_activities <- merge(intersected_activities, new_labels, by = "ACTIVITY_TYPE", all.x = TRUE)
+
 
 saveRDS(assigned_activities,"assigned_activities_new.RDS")
 saveRDS(intersected_activities,"intersected_activities_new.RDS")
 
 
 
-#### Create plant year field ####
+# Check if there are any ACTIVITY_TYPE values without a corresponding type_labels
+missing_labels <- assigned_activities %>%
+  filter(!is.na(ACTIVITY_TYPE) & is.na(type_labels)) %>%
+  distinct(ACTIVITY_TYPE)
 
-# Function to link each non-plant management activity the most recent planting that is
-# spatially intersecting and populate a field called plant_year
-
-process_assigned_activities <- function(assigned_activities) {
-  # Function to process each group
-  process_group <- function(group_data) {
-    plant_data <- group_data %>% filter(IS_Plant == TRUE)
-    non_plant_data <- group_data %>% filter(IS_Plant == FALSE)
-    
-    if (nrow(plant_data) > 0) {
-      plant_data$plant_year <- plant_data$year  # Assign plant_year for plantings
-      
-      if (nrow(non_plant_data) > 0) {
-        intersections <- st_intersects(non_plant_data, plant_data)
-        
-        non_plant_data$plant_year <- mapply(function(x, current_year) {
-          if (length(x) > 0) {
-            # Get all planting years less than the current year
-            valid_years <- plant_data$year[x][plant_data$year[x] < current_year]
-            if (length(valid_years) > 0) {
-              return(max(valid_years))  # Return the maximum valid year
-            }
-          }
-          return(NA)
-        }, intersections, non_plant_data$year)
-      }
-    } else {
-      if (nrow(non_plant_data) > 0) {
-        non_plant_data$plant_year <- NA
-      }
-    }
-    
-    processed_result <- bind_rows(plant_data, non_plant_data)
-    return(processed_result)
-  }
-  
-  # Process each group
-  processed_result <- assigned_activities %>%
-    group_by(Event_ID, Incid_Name) %>%
-    group_modify(~process_group(.x)) %>%
-    ungroup()
-  
-  # Diagnostic information
-  cat("Total rows:", nrow(processed_result), "\n")
-  cat("Rows with non-NA plant_year:", sum(!is.na(processed_result$plant_year)), "\n")
-  cat("Unique Event_IDs:", length(unique(processed_result$Event_ID)), "\n")
-  cat("Rows with IS_Plant == TRUE:", sum(processed_result$IS_Plant), "\n")
-  cat("Rows with IS_Plant == FALSE:", sum(!processed_result$IS_Plant), "\n")
-  
-  return(processed_result)
-}
-
-# Usage
-processed_activities <- process_assigned_activities(assigned_activities)
+print(missing_labels)
 
 
+ca_eco = st_read("../Data/ca_eco_l3.shp")
 
-# #### Calculate proportions ####
-# 
-# calculate_treatment_proportions <- function(data, select_treatments, type_labels) {
-#   
-#   # Calculate net acres for each treatment and plantation
-#   net_acres <- data %>%
-#     filter(type_labels %in% c(select_treatments, "Plant Trees")) %>%
-#     group_by(plant_year, Event_ID, type_labels) %>%
-#     summarise(
-#       geometry = st_union(geometry),
-#       .groups = "drop"
-#     ) %>%
-#   print("net acres summarized by plant year")
-#   
-#   # Calculate plantation areas
-#   plantation_areas <- net_acres %>%
-#     filter(type_labels == "Plant Trees") %>%
-#     group_by(plant_year) %>%
-#     summarise(
-#       plantation_geometry = st_union(geometry),
-#       plantation_area_acres = sum(net_acres),
-#       plantations_count = n(),
-#       .groups = "drop") %>%
-#     st_as_sf()
-#   print("planted area summarized by plant year")
-#   
-#   # Calculate treatment areas and their intersection with plantations
-#   treatment_areas <- net_acres %>%
-#     filter(type_labels %in% select_treatments) %>%
-#     group_by(plant_year, type_labels) %>%
-#     summarise(
-#       treatment_geometry = st_union(geometry),
-#       treatment_area_acres = sum(net_acres),
-#       fires_treated = n_distinct(Event_ID),
-#       treatment_count = n(),
-#       .groups = "drop") %>%
-#     st_as_sf()
-#   print("non-plant activity area summarized by plant year")
-#   
-#   treatment_areas = treatment_areas %>%
-#     st_join(plantation_areas, join = st_intersects, left = TRUE) %>%
-#     try(
-#     mutate(
-#       intersection_acres = st_area(st_intersection(plantation_geometry, treatment_geometry)/4046.86),
-#       prop_of_plantation_area = intersection_acres / plantation_area_acres
-#     )) %>%
-#     select(-treatment_geometry) %>%  # Remove the duplicate geometry column
-#     st_drop_geometry()  # Now we can safely drop the geometry
-#   print("treatment proportions calculated")
-#   
-#   # Combine results
-#   result <- treatment_areas %>%
-#     select(plant_year.x, type_labels, treatment_count, fires_treated, treatment_area_acres, 
-#            plantation_area_acres, plantations_count, prop_of_plantation_area) %>%
-#     pivot_wider(
-#       id_cols = c(plant_year.x, plantation_area_acres, plantations_count),
-#       names_from = type_labels,
-#       values_from = c(treatment_count, fires_treated, treatment_area_acres, prop_of_plantation_area),
-#       values_fill = list(treatment_count = 0, fires_treated = 0, treatment_area_acres = 0, prop_of_plantation_area = 0)
-#     ) %>%
-#     arrange(plant_year)
-#   print("summary by plant year complete")
-#   
-#   return(result)
-# }
-# 
-# select_treatments <- c("Stocking Survey", "Survival Survey", "Certification - Plant", "TSI - Release", "Fill-in or Replant Trees")
-# treatment_proportions <- calculate_treatment_proportions(processed_activities, select_treatments, type_labels)
+ca_eco = st_transform(ca_eco, crs(assigned_activities))
+ca_eco = ca_eco %>%
+  group_by(NA_L3NAME) %>%
+  summarize(geometry = st_union(geometry))
 
-
-#### TODO: ####
-
-# Summarize severity
-
-
+test = net_activities %>%
+  st_intersection(ca_eco)
 

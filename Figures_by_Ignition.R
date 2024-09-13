@@ -654,3 +654,181 @@ fig = {
 combined_ignition_df = combined_ignition_year %>% st_drop_geometry()
 combined_activity_df = combined_activity_year %>% st_drop_geometry()
 
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+
+fire_id_year_table <- fire_events %>%
+  select(fire_id, Ig_Year) %>%
+  distinct() %>% st_drop_geometry() %>%
+  arrange(Ig_Year, fire_id)
+
+combined_postfire_acres = gross_activities %>%
+  st_drop_geometry %>%
+  left_join(net_activities) %>%
+  # left_join(fire_id_year_table) %>%
+  st_drop_geometry() %>%
+  arrange(Ig_Year, fire_id)
+
+
+# Prepare data for top panel
+activities_data <- combined_postfire_acres %>%
+  select(Ig_Year, type_labels, gross_acres, net_acres) %>%
+  filter(type_labels %in% c("Initial Planting", "Harvest - Salvage", 
+                            "Site Prep - Mechanical", "Site Prep - Chemical", "Site Prep - Other",
+                            "Fill-in or Replant", "TSI - Release", "TSI - Thin")) %>%
+  mutate(type_labels = case_when(
+    type_labels %in% c("Site Prep - Mechanical", "Site Prep - Chemical", "Site Prep - Other") ~ "Site Prep - Any",
+    TRUE ~ type_labels
+  )) %>%
+  group_by(Ig_Year, type_labels) %>%
+  summarize(gross_acres = sum(gross_acres),
+            net_acres = sum(net_acres),
+            .groups = "drop") %>%
+  mutate(type_labels = factor(type_labels, 
+                              levels = c("Initial Planting", "Harvest - Salvage", "Site Prep - Any", 
+                                         "Fill-in or Replant", "TSI - Release", "TSI - Thin")))
+
+# Create top panel plot
+top_plot <- ggplot(activities_data, aes(x = Ig_Year)) +
+  geom_col(aes(y = gross_acres, fill = "Gross Acres")) +
+  geom_col(aes(y = net_acres, fill = "Net Acres")) +
+  facet_wrap(~ type_labels, ncol = 3, scales = "free") +
+  scale_fill_manual(values = c("Gross Acres" = "darkblue", "Net Acres" = "royalblue"),
+                    name = "Area Type") +
+  labs(title = "Postfire Reforestation Treatments",
+       x = "Ignition Year",
+       y = "Acres") +
+  theme_bw(base_size = 10) +
+  theme(strip.text = element_text(face = "bold", size = 11),
+        axis.title = element_text(face = "bold", size = 11),
+        axis.text = element_text(size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(face = "bold", size = 11),
+        legend.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(2000, 2021, by = 5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+# Prepare data for bottom panel
+severity_data <- severity_summary %>%
+  filter(Category == "Total Burned") %>%
+  select(Ig_Year, Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres) %>%
+  pivot_longer(cols = -c(Ig_Year, Category), 
+               names_to = "Severity",
+               values_to = "Acres") %>%
+  mutate(Severity = factor(Severity, 
+                           levels = c("High_acres", "Moderate_acres", "Low_acres", "Unburned_to_Low_acres"),
+                           labels = c("High", "Moderate", "Low", "Unburned to Low")))
+
+# Create bottom panel plot
+bottom_plot <- ggplot(severity_data, aes(x = Ig_Year, y = Acres, fill = Severity)) +
+  geom_area(alpha = 0.7) +
+  scale_fill_manual(values = c("High" = "red", "Moderate" = "yellow", 
+                               "Low" = "skyblue", "Unburned to Low" = "darkgreen"),
+                    name = "Burn Severity") +
+  labs(title = "Acres Burned by Severity Class",
+       x = "Ignition Year",
+       y = "Acres") +
+  theme_bw(base_size = 10) +
+  theme(axis.title = element_text(face = "bold", size = 11),
+        axis.text = element_text(size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(face = "bold", size = 11),
+        legend.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(2000, 2021, by = 2)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+# Combine plots using patchwork
+combined_plot <- top_plot / bottom_plot +
+  plot_layout(heights = c(2, 1)) +
+  plot_annotation(
+    title = "Reforestation Treatments and Area Burned by Ignition Year",
+    subtitle = "USFS Region 5 Fires, 2000-2021",
+    theme = theme(plot.title = element_text(face = "bold", size = 12),
+                  plot.subtitle = element_text(size = 11))
+  )
+
+# Display the combined plot
+print(combined_plot)
+
+# Save the plot
+ggsave("postfire_management_and_severity.png", combined_plot, width = 8, height = 6, dpi = 300)
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Prepare the data
+treatment_data <- combined_activities_in_plant %>%
+  filter(type_labels %in% c("Initial Planting", "Fill-in or Replant", "TSI - Release", "TSI - Thin", 
+                            "Site Prep - Mechanical", "Site Prep - Chemical", "Site Prep - Other")) %>%
+  mutate(
+    type_labels = case_when(
+      type_labels %in% c("Site Prep - Mechanical", "Site Prep - Chemical", "Site Prep - Other") ~ "Site Prep - Any",
+      TRUE ~ type_labels
+    ),
+    planting_acres = if_else(type_labels == "Initial Planting", net_total, 0),
+    treatment_acres = if_else(type_labels != "Initial Planting", intersecting_acres, 0)
+  ) %>%
+  group_by(Ig_Year, type_labels) %>%
+  summarize(
+    planting_acres = sum(planting_acres, na.rm = TRUE),
+    treatment_acres = sum(treatment_acres, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = c(planting_acres, treatment_acres),
+    names_to = "acre_type",
+    values_to = "acres"
+  ) %>%
+  filter(acres > 0)  # Remove any zero-acre entries
+
+# Calculate total planted acres by year
+planted_acres <- treatment_data %>%
+  filter(type_labels == "Initial Planting", acre_type == "planting_acres") %>%
+  select(Ig_Year, planted_acres = acres)
+
+# Calculate percentages
+percentage_data <- treatment_data %>%
+  filter(type_labels != "Initial Planting", acre_type == "treatment_acres") %>%
+  left_join(planted_acres, by = "Ig_Year") %>%
+  mutate(percentage = (acres / planted_acres) * 100) %>%
+  filter(!is.na(percentage) & !is.infinite(percentage))
+
+# Create the plot
+treatment_percentage_plot <- ggplot(percentage_data, aes(x = Ig_Year, y = percentage, color = type_labels)) +
+  geom_line(size = 1.25) +
+  geom_point(size = 3) +
+  labs(title = "Percentage of Planted Acres Receiving Additional Treatments",
+       subtitle = "USFS Region 5, 2000 - 2021",
+       x = "Ignition Year", 
+       y = "Percentage of Planted Area",
+       color = "Treatment Type") +
+  scale_color_manual(values = c("Fill-in or Replant" = "purple", 
+                                "TSI - Release" = "orange", 
+                                "TSI - Thin" = "blue",
+                                "Site Prep - Any" = "darkgreen")) +
+  theme_bw(base_size = 11) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 11),
+        axis.title = element_text(face = "bold", size = 11),
+        axis.text = element_text(size = 11),
+        legend.position = "bottom",
+        legend.title = element_text(face = "bold", size = 11),
+        legend.text = element_text(size = 10),
+        panel.grid.minor = element_blank()) +
+  scale_x_continuous(breaks = seq(2000, 2021, by = 4)) +
+  scale_y_continuous(limits = c(0, min(max(percentage_data$percentage, na.rm = TRUE) * 1.1, 100)),
+                     labels = scales::percent_format(scale = 1, accuracy = 1),
+                     breaks = seq(0, 100, by = 10))
+
+# Display the plot
+print(treatment_percentage_plot)
+
+# Save the plot
+ggsave("percentage_planted_acres_with_treatments.png", treatment_percentage_plot, width = 8, height = 6, dpi = 300)

@@ -5,12 +5,11 @@ library(sf)
 library(tidyverse)
 
 setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
-# setwd("~/Library/CloudStorage/Box-Box/Kelly_postfire_reforestation_project/Output")
 
 facts_activities = readRDS("facts_activities_new.RDS")
 intersected_activities = readRDS("intersected_activities_new.RDS")
 assigned_activities = readRDS("assigned_activities_new.RDS")
-fire_events = st_read("R5_fires_00_22.shp")
+fire_events = st_read("R5_fires_00_21.shp")
 
 
 # Calculate total and cumulative area burned
@@ -37,55 +36,66 @@ total_area_burned <- function(data) {
 # Calculate cumulative area burned
 burned_area_by_year <- total_area_burned(fire_events)
 
+write.csv(burned_area_by_year, "burned_area_by_year_R5.csv")
+
 saveRDS(burned_area_by_year, "burned_area_by_year.RDS")
 
 
 
-# # Summarize activity_area by ACTIVITY_TYPE for facts_df
-# facts_acres <- intersected_activities %>%
-#   st_collection_extract("POLYGON") %>%
-#   # group_by(big_groups) %>%
-#   group_by(type_labels) %>%
-#   summarise(geometry = sum(st_area(geometry)),
-#             # "Types" = n_distinct(type_labels),
-#             "Activities" = n_distinct(ACTIVITY)) %>%
-#   mutate("Total FACTS Acres" = as.numeric(st_area(geometry))/4046.86) %>%
-#   st_drop_geometry()
-# 
-# gross_postfire_acres_by_fire <- assigned_activities %>%
-#   st_collection_extract("POLYGON") %>%
-#   mutate(fire_id = paste(Incid_Name, Ig_Year, sep="_")) %>%
-#   group_by(type_labels, fire_id) %>%
-#   summarise(geometry = sum(st_area(geometry))) %>%
-#   mutate(gross_acres = as.numeric(st_area(geometry))/4046.86)
-# 
-# gross_postfire_acres = gross_postfire_acres_by_fire %>%
-#   group_by(type_labels) %>%
-#   summarize("Gross Postfire Acres" = sum(gross_acres)) %>%
-#   ungroup() %>% st_drop_geometry()
-# 
+# Calculate weighted average % High for each fire_id and Ig_Year
+weighted_high_severity <- severity_burned %>%
+  group_by(fire_id, Ig_Year) %>%
+  summarize(
+    total_acres = sum(Area_acres),
+    weighted_high_percent = sum(Area_acres[Severity_Class == "High"] / sum(Area_acres) * 100)
+  ) %>%
+  ungroup()
+
+# Calculate weighted average % High for each Ig_Year
+yearly_weighted_high_severity <- weighted_high_severity %>%
+  group_by(Ig_Year) %>%
+  summarize(
+    weighted_avg_high_percent = sum(weighted_high_percent * total_acres) / sum(total_acres)
+  ) %>%
+  arrange(Ig_Year)
 
 
-net_postfire_acres <- assigned_activities %>%
-  filter(Ig_Year < 2022) %>%
-  st_collection_extract("POLYGON") %>%
-  mutate(fire_id = paste(Incid_Name, Ig_Year, sep="_")) %>%
+late_planting = processed_activities %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
+  filter(
+         type_labels == "Initial Planting",
+         diff_years > 12) %>%
+  mutate(acres = as.numeric(st_area(geometry)) / 4046.86) %>%
+  group_by(Ig_Year, fire_id, year) %>%
+  summarize(planted_per_year = sum(acres),
+            date = first(DATE_COMPL))
+
+
+
+
+
+#### Gross and Net Postfire / Net within Planted for Table ####
+
+net_postfire_acres <- processed_activities %>%
+  st_collection_extract() %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
   group_by(type_labels, fire_id) %>%
   summarize(geometry = st_union(geometry)) %>%
   mutate(net_acres = as.numeric(st_area(geometry))/4046.86)
 
 
-# Calculate the net area within plantations for all non-plant activities
-# Assuming all_activities is loaded
 
-# Filter for the relevant activities
-monitor_types <- c("Certification - Plant", "Certification - Release", "Silvicultural Prescription",
-                         "Stand Exam", "Survival Survey", "Stocking Survey")
+# Calculate the net area within plantations for all non-plant activities
 
 plant <- net_postfire_acres %>%
   filter(type_labels == "Initial Planting")
 non_plant <- net_postfire_acres %>%
   filter(type_labels != "Initial Planting")
+# 
+# plant <- net_activities %>%
+#   filter(type_labels == "Initial Planting")
+# non_plant <- net_activities %>%
+#   filter(type_labels != "Initial Planting")
 
 planted_by_fire = plant %>%
   rename(net_total = net_acres) %>%
@@ -151,41 +161,54 @@ combined_activities_in_plant <- activities_in_plant %>%
 
 write.csv(activities_in_plantations, "activities_in_plantations.csv")
 
-monitor_types_report = c("Certification - Plant", "Certification - Release", "Silvicultural Prescription",
-                  "Stand Exam", "Survival Survey", "Stocking Survey", "Reforest. Need - Failure",
-                  "Reforest. Need - Fire", "Reforest. Need - Harvest")
-treatment_types_report = c("Fill-in or Replant", "Harvest - Salvage", "Harvest - Non-Salvage", "Site Prep - Chemical",
-                    "Site Prep - Mechanical", "Site Prep - Other", "TSI - Release", "TSI - Thin")
 
-# monitor_in_planted = activities_in_plantations %>%
-#   filter(type_labels %in% monitor_types)
-# treatment_in_planted = activities_in_plantations %>%
-#   filter(type_labels %in% treatment_types)
+# Create the total & gross tables then combine with net
 
+facts_acres_by_fire <- intersected_activities %>%
+  st_collection_extract() %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
+  # First, group by facts_polygon_id and summarize
+  group_by(facts_polygon_id) %>%
+  summarize(
+    type_labels = first(type_labels),
+    fire_id = first(fire_id),
+    geometry = st_union(geometry),
+    n_records = n()
+  ) %>%
+  # Then, group by type_labels and fire_id
+  group_by(type_labels, fire_id) %>%
+  summarize(
+    geometry = st_union(geometry),
+    n_records = sum(n_records)
+  ) %>%
+  mutate(facts_acres = as.numeric(st_area(geometry))/4046.86)
 
-facts_acres <- intersected_activities %>%
-  filter(Ig_Year < 2022) %>%
-  st_collection_extract("POLYGON") %>%
+facts_acres <- facts_acres_by_fire %>%
   group_by(type_labels) %>%
-  summarize(geometry = sum(st_area(geometry)),
-            "Activities" = n_distinct(ACTIVITY)) %>%
-  mutate("Total FACTS Acres" = as.numeric(st_area(geometry))/4046.86) %>%
+  summarize(
+    "Total FACTS Acres" = sum(facts_acres),
+    n_records = sum(n_records)
+  ) %>%
+  ungroup() %>% 
   st_drop_geometry()
 
 
 gross_postfire_acres_by_fire <- assigned_activities %>%
-  filter(Ig_Year < 2022) %>%
-  st_collection_extract("POLYGON") %>%
-  mutate(fire_id = paste(Incid_Name, Ig_Year, sep="_")) %>%
+  st_collection_extract() %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
   group_by(type_labels, fire_id) %>%
-  summarise(geometry = sum(st_area(geometry))) %>%
+  summarise(geometry = sum(st_area(geometry)),
+            n_records = n()) %>%
   mutate(gross_acres = as.numeric(st_area(geometry))/4046.86)
 
 gross_postfire_acres = gross_postfire_acres_by_fire %>%
   group_by(type_labels) %>%
-  summarize("Gross Postfire Acres" = sum(gross_acres)) %>%
-  ungroup() %>% st_drop_geometry()
-
+  summarize("Gross Postfire Acres" = sum(gross_acres),
+            n_records = sum(n_records)) %>%
+  ungroup() %>% 
+  st_drop_geometry()
+  
+  
 net_postfire_acres_combined <- combined_activities_in_plant %>%
   group_by(type_labels) %>%
   summarize(
@@ -208,16 +231,44 @@ net_postfire_acres_combined <- combined_activities_in_plant %>%
 
 # Combine the tables
 combined_table <- facts_acres %>%
+  rename(n_pre_assign = n_records) %>%
   full_join(gross_postfire_acres, by = "type_labels") %>%
   full_join(net_postfire_acres_combined, by = "type_labels") %>%
-  replace_na(list(Activities = 0, 
-                  `Total FACTS Acres` = 0, 
+  replace_na(list(`Total FACTS Acres` = 0, 
+                  n_pre_assign = 0,
                   `Gross Postfire Acres` = 0, 
+                  n_records = 0,
                   `Net Postfire Acres` = 0, 
                   `Net Acres in Plantations` = 0, 
-                  `Percent Planted Acres` = 0))
+                  `Percent Planted Acres` = 0)) %>%
+  select(type_labels, n_pre_assign, "Total FACTS Acres", n_records, everything())
 
-# Create a function to assign priority to activity types
+
+treatment_types_report <- c(
+  "Initial Planting",
+  "Fill-in or Replant",
+  "Release - Chemical",
+  "Release - Non-Chemical",
+  "TSI - Thin",
+  "Harvest - Salvage",
+  "Harvest - Non-Salvage",
+  "Site Prep - Chemical",
+  "Site Prep - Non-Chemical"
+)
+
+monitor_types_report <- c(
+  "Certification - Plant",
+  "Certification - Release",
+  "Stocking Survey",
+  "Survival Survey",
+  "Stand Exam",
+  "Survey - Other",
+  "Reforest. Need - Failure",
+  "Reforest. Need - Fire",
+  "Reforest. Need - Harvest"
+)
+
+# Update the get_priority function
 get_priority <- function(type) {
   if (type == "Initial Planting") return(1)
   if (type %in% treatment_types_report) return(2)
@@ -244,24 +295,32 @@ final_table <- final_table %>%
 # Display the result
 view(final_table)
 
-
 write.csv(final_table, "combined_postfire_activities.csv", row.names = FALSE)
 
-total_area_before <- sum(st_area(fire_events)) / 4046.86
-total_area_after <- sum(st_area(fires_fires)) / 4046.86
+
+
+
+
+
+mean_acres_by_year = assigned_activities %>%
+  st_collection_extract() %>%
+  group_by(type_labels, Ig_Year) %>%
+  summarize(geometry = sum(st_area(geometry))) %>%
+  group_by(type_labels) %>%
+  summarize(mean_acres = mean(as.numeric(st_area(geometry))/4046.86)) %>%
+  st_drop_geometry()
 
 
 # Create fire_id column
-fires_fires <- fires_fires %>%
-  mutate(fire_id = paste(Incid_Name, Ig_Year, sep = "_"))
+fires_fires <- facts_fires$fires_fires %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep = "_"))
 
 # Create fire_id column
-fire_events <- fire_events %>%
-  mutate(fire_id = paste(Incid_Name, Ig_Year, sep = "_"))
+fire_events <- facts_fires$fires %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep = "_"))
 
 # Summarize the data
 burned_once <- fires_fires %>%
-  filter(Ig_Year < 2022) %>%
   group_by(fire_id) %>%
   summarize(
     acres_burned_once = sum(ifelse(n.overlaps == 1, area, 0)) / 4046.86, # Convert m^2 to acres
@@ -271,7 +330,6 @@ burned_once <- fires_fires %>%
   st_drop_geometry()
 
 total_fire_events = fire_events %>%
-  filter(Ig_Year < 2022) %>%
   group_by(fire_id) %>% 
   summarize(total_acres = sum(as.numeric(st_area(geometry)))/4046.86) %>% 
   st_drop_geometry
@@ -292,4 +350,126 @@ overall_total <- total_fire_events %>%
   ) %>%
   arrange(desc(Total_Acres))
 
-print(overall_total)
+view(overall_total)
+
+
+severity_by_fire = severity_burned %>%
+  group_by(Ig_Year, fire_id, Severity_Class) %>%
+  pivot_wider(id_cols = c(Ig_Year, fire_id),
+              names_from = Severity_Class,
+              values_from = Area_acres) %>%
+  mutate(total = sum(across(where(is.numeric)), na.rm = TRUE))
+write.csv(severity_by_fire, "severity_by_fire.csv")
+
+
+
+#### Total Fires Reburned ####
+
+# Assuming assigned_activities is already loaded
+
+# Step 1: Identify all initial planting activities before filtering
+all_plantings <- facts_fires$assigned_activities %>%
+  filter(ACTIVITY == "Plant Trees")
+
+# Step 2: Identify plantings that intersect multiple fires
+plantings_multiple_fires <- all_plantings %>%
+  group_by(facts_polygon_id) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+# Step 3: Identify plantings that were kept after assignment
+kept_plantings <- assigned_activities %>%
+  filter(type_labels == "Initial Planting")
+
+# Convert to non-spatial data frames for the anti_join
+all_plantings_df <- all_plantings %>% st_drop_geometry()
+kept_plantings_df <- kept_plantings %>% st_drop_geometry()
+
+filtered_plantings_df <- anti_join(all_plantings_df, kept_plantings_df, by = "facts_polygon_id")
+
+# Recreate spatial object for filtered plantings
+filtered_plantings <- all_plantings %>%
+  filter(facts_polygon_id %in% filtered_plantings_df$facts_polygon_id)
+
+# Step 5: Calculate areas
+calculate_area <- function(sf_object) {
+  sum(st_area(sf_object)) / 4046.86  # Convert to acres
+}
+
+total_planted_acres <- calculate_area(all_plantings)
+kept_planted_acres <- calculate_area(kept_plantings)
+filtered_planted_acres <- calculate_area(filtered_plantings)
+multiple_fire_acres <- calculate_area(plantings_multiple_fires)
+
+# Step 6: Create summary
+planting_summary <- data.frame(
+  Total_Planted_Acres = total_planted_acres,
+  Kept_Planted_Acres = kept_planted_acres,
+  Filtered_Planted_Acres = filtered_planted_acres,
+  Multiple_Fire_Acres = multiple_fire_acres,
+  Percent_Kept = (kept_planted_acres / total_planted_acres) * 100,
+  Percent_Filtered = (filtered_planted_acres / total_planted_acres) * 100,
+  Percent_Multiple_Fires = (multiple_fire_acres / total_planted_acres) * 100
+)
+
+
+
+# Step 7: Analyze filtered plantings with reburn information
+filtered_planting_analysis <- filtered_plantings %>%
+  group_by(facts_polygon_id) %>%
+  summarize(
+    Num_Intersecting_Fires = n(),
+    Earliest_Fire_Year = min(Ig_Year),
+    Latest_Fire_Year = max(Ig_Year),
+    Planting_Year = first(year),
+    Area_Acres = calculate_area(geometry),
+    Is_Reburn = Num_Intersecting_Fires > 1
+  ) %>%
+  ungroup()
+
+# Calculate reburn statistics
+reburn_stats <- filtered_planting_analysis %>%
+  summarize(
+    Total_Filtered_Acres = sum(Area_Acres),
+    Reburn_Acres = sum(Area_Acres[Is_Reburn]),
+    Percent_Reburn = (Reburn_Acres / Total_Filtered_Acres) * 100,
+    Num_Reburn_Plantings = sum(Is_Reburn),
+    Total_Plantings = n()
+  )
+
+# Add reburn information to the planting summary
+planting_summary$Filtered_Reburn_Acres <- reburn_stats$Reburn_Acres
+planting_summary$Percent_Filtered_Reburn <- (reburn_stats$Reburn_Acres / planting_summary$Filtered_Planted_Acres) * 100
+
+# Print the updated summary
+print(planting_summary)
+
+# Print reburn statistics
+print(reburn_stats)
+
+# Optionally, save the updated summary to a CSV file
+write.csv(planting_summary, "planting_fire_intersection_summary_with_reburns.csv", row.names = FALSE)
+
+# Print the first few rows of the filtered planting analysis
+print(head(filtered_planting_analysis))
+
+# Optionally, save the filtered planting analysis to a CSV file
+write.csv(st_drop_geometry(filtered_planting_analysis), "filtered_planting_analysis_with_reburns.csv", row.names = FALSE)
+
+# Create a summary of reburns by number of intersecting fires
+reburn_summary <- filtered_planting_analysis %>%
+  group_by(Num_Intersecting_Fires) %>%
+  summarize(
+    Total_Acres = sum(Area_Acres),
+    Num_Plantings = n()
+  ) %>%
+  mutate(
+    Percent_of_Filtered_Acres = (Total_Acres / sum(Total_Acres)) * 100,
+    Percent_of_Filtered_Plantings = (Num_Plantings / sum(Num_Plantings)) * 100
+  )
+
+# Print the reburn summary
+print(reburn_summary)
+
+# Optionally, save the reburn summary to a CSV file
+write.csv(reburn_summary, "filtered_planting_reburn_summary.csv", row.names = FALSE)

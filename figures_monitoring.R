@@ -60,7 +60,8 @@ severity_data <- severity_summary %>%
   pivot_longer(cols = c(Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres),
                names_to = "Severity",
                values_to = "Acres") %>%
-  mutate(Severity = gsub("_acres", "", Severity))
+  mutate(Severity = gsub("_acres", "", Severity),
+         case_when(Severity == "Unburned_to_Low" ~ "Unburned to Low"))
 
 # Prepare data for vegetation types
 veg_data <- veg_summary %>%
@@ -69,13 +70,12 @@ veg_data <- veg_summary %>%
   pivot_longer(cols = c(Conifer_acres, Shrubland_acres, Hardwood_acres, Other_acres),
                names_to = "Veg_Type",
                values_to = "Acres") %>%
-  mutate(Veg_Type = gsub("_acres", "", Veg_Type),
-         case_when(Severity == "Unburned_to_Low" ~ "Unburned to Low"))
+  mutate(Veg_Type = gsub("_acres", "", Veg_Type))
 
 # Color palettes and levels
-severity_colors <- c("High" = "red", "Moderate" = "yellow2", "Low" = "skyblue", "Unburned_to_Low" = "darkgreen")
+severity_colors <- c("High" = "red", "Moderate" = "yellow2", "Low" = "skyblue", "Unburned to Low" = "darkgreen")
 veg_colors <- c("Conifer" = "springgreen4", "Shrubland" = "goldenrod", "Hardwood" = "purple2", "Other" = "gray70")
-severity_levels <- c("High", "Moderate", "Low", "Unburned_to_Low")
+severity_levels <- c("High", "Moderate", "Low", "Unburned to Low")
 veg_levels <- c("Conifer", "Shrubland", "Hardwood", "Other")
 
 # Create plots by ignition year
@@ -103,6 +103,8 @@ veg_summary_plot <- create_summary_plot(veg_summary_data, "Veg_Type", veg_colors
 severity_plots <- list(main_plot = severity_plot, summary_plot = severity_summary_plot)
 veg_plots <- list(main_plot = veg_plot, summary_plot = veg_summary_plot)
 
+print(severity_plots)
+print(veg_plots)
 # Save plots
 ggsave("Monitoring_Acres_by_Severity.png", severity_plots$main_plot, width = 12, height = 8)
 ggsave("Monitoring_Acres_by_Veg_Type.png", veg_plots$main_plot, width = 12, height = 8)

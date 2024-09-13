@@ -19,21 +19,24 @@ severity_by_year = readRDS("severity_by_year.RDS")
 severity_summary = readRDS("severity_summary.RDS")
 burned_area_by_year = readRDS("burned_area_by_year.RDS")
 
-combined_cumulative <- combined_cumulative %>%
-  filter(end_year < 2022)
-# severity_by_year<- severity_by_year %>%
-#   filter(Ig_Year < 2022)
-severity_summary <- severity_summary %>%
-  filter(Ig_Year < 2022)
-# burned_area_by_year<- burned_area_by_year %>%
-#   filter(Ig_Year < 2022)
+
+gross_by_fire_activity_year <- assigned_activities %>%
+  st_collection_extract() %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
+  group_by(type_labels, year) %>%
+  summarize(geometry = sum(st_area(geometry)), .groups = "drop") %>%
+  mutate(gross_acres = as.numeric(st_area(geometry)) / 4046.86) %>%  # Convert m^2 to acres
+  arrange(type_labels, year) %>%
+  group_by(type_labels) %>%
+  mutate(cumulative_gross_acres = cumsum(gross_acres)) %>%
+  ungroup()
 
 
 #### Cumulative Planting + Burn Severity ####
 
-cumulative_planted_severity_plot <- function(combined_cumulative, severity_summary, max_plant_axis = 5e5, max_burned_axis = 1.5e7) {
+cumulative_planted_severity_plot <- function(cumulative_data, fire_data, max_plant_axis = 5e5, max_burned_axis = 1.5e7) {
   # Prepare cumulative burned acres data by severity
-  cumulative_burned_severity <- severity_summary %>%
+  cumulative_burned_severity <- fire_data %>%
     st_drop_geometry() %>%
     filter(Category == "Total Burned") %>%
     select(Ig_Year, Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres, Increased_Greenness_acres) %>%
@@ -57,22 +60,19 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
     mutate(Type = "Burned Acres by Severity")
   
   # Prepare cumulative planting data
-  planting_data <- combined_cumulative %>% 
+  planting_data <- cumulative_data %>% 
     filter(type_labels == "Initial Planting") %>%
-    select(end_year, gross_acres, net_acres) %>%
-    pivot_longer(cols = c(gross_acres, net_acres),
-                 names_to = "Metric",
-                 values_to = "Acres") %>%
-    mutate(Metric = ifelse(Metric == "gross_acres", "Gross Acres to Date", "Net Acres to Date"),
-           Type = "Postfire Planting Acres")
+    select(year, type_labels, cumulative_gross_acres) %>%
+    rename(Acres = cumulative_gross_acres) %>%
+    mutate(Type = "Postfire Planting Acres")
   
   # Combine datasets
   combined_data <- bind_rows(
     cumulative_burned_severity %>% rename(Year = Ig_Year),
-    planting_data %>% rename(Year = end_year),
+    planting_data %>% rename(Year = year)
   )
   
-  # Set factor levels for Severity and Metric
+  # Set factor levels for Severity
   severity_levels <- c("Increased Greenness", "Unburned to Low", "Low", "Moderate", "High")
   combined_data$Severity <- factor(combined_data$Severity, levels = severity_levels)
   combined_data$Type <- factor(combined_data$Type, levels = c("Postfire Planting Acres", "Burned Acres by Severity"))
@@ -81,24 +81,25 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
   max_year <- max(combined_data$Year)
   
   # Calculate max cumulative values
-  max_planted_gross <- max(planting_data$Acres[planting_data$Metric == "Gross Acres to Date"])
-  max_planted_net <- max(planting_data$Acres[planting_data$Metric == "Net Acres to Date"])
+  max_planted_gross <- max(planting_data$Acres)
   
   max_burned_by_severity <- cumulative_burned_severity %>%
     filter(Ig_Year == max(Ig_Year)) %>%
     group_by(Severity) %>%
     summarize(max_burned = sum(Cumulative_Acres)) %>%
     mutate(label = paste0(Severity, ": ", scales::comma(max_burned)))
-  max_burned_by_severity$label = factor(max_burned_by_severity$label, levels = severity_levels)
   
   total_burned <- sum(max_burned_by_severity$max_burned)
   
   # Create the plot
   ggplot() +
-    # Lines for cumulative planting data
+    # Line for cumulative planting data
     geom_line(data = subset(combined_data, Type == "Postfire Planting Acres"), 
-              aes(x = Year, y = Acres, color = Metric), 
-              alpha = 1, size = 1.25) +
+              aes(x = Year, y = Acres), 
+              color = "darkblue", alpha = 1, size = 1.25) +
+    geom_point(data = subset(combined_data, Type == "Postfire Planting Acres"), 
+              aes(x = Year, y = Acres), 
+              fill = "royalblue", alpha = 1, size = 3, shape = 21) +
     # Stacked area for cumulative burned acres by severity
     geom_area(data = subset(combined_data, Type == "Burned Acres by Severity"), 
               aes(x = Year, y = Cumulative_Acres, fill = Severity), 
@@ -110,56 +111,39 @@ cumulative_planted_severity_plot <- function(combined_cumulative, severity_summa
                                  "Moderate" = "yellow2", 
                                  "High" = "red"),
                       name = "Severity Classes") +
-    scale_color_manual(values = c("Gross Acres to Date" = "darkblue", 
-                                  "Net Acres to Date" = "royalblue"),
-                       name = "Planted Area") +
     # Facet the plots
-    facet_wrap(~ Type, nrow = 2, scales = "free") +
+    facet_wrap(~ Type, nrow = 2, scales = "free_y") +
     # Labels and theme
-    labs(title = "Cumulative Area Burned by Severity & Planted Postfire",
-         subtitle = "USFS Region 5, 2000 - 2021",
+    labs(title = "Cumulative Area Planted Postfire & Burned by Severity",
+         subtitle = "USFS R5 | Fires, 2000 - 2021 | Planting, 2001 - 2022",
          x = "Year", y = "Acres") +
     theme_bw(base_size = 10) +
     theme(
-      strip.text = element_text(face = "bold", size = 11),
+      strip.text = element_text(face = "bold", size = 10),
       legend.position = "bottom",
       legend.box = "vertical",
-      legend.margin = margin(),
-      legend.location = "plot",
-      legend.title = element_text(face = "bold", size = 11),
-      legend.text = element_text(size = 10),
-      axis.text = element_text(size = 11),
+      legend.margin = margin(r = 50),
+      legend.title = element_text(face = "bold", size = 10),
+      legend.text = element_text(size = 9),
+      axis.text = element_text(size = 9),
       axis.title = element_text(face = "bold", size = 11),
       plot.title = element_text(face = "bold", size = 12),
       plot.title.position = "plot",
       plot.subtitle = element_text(size = 11),
       panel.spacing = unit(0.5, "lines")
     ) +
-    scale_x_continuous(breaks = seq(min_year, max_year, by = 2),
+    scale_x_continuous(breaks = seq(min_year, max_year, by = 4),
                        limits = c(min_year, max_year)) +
     scale_y_continuous(labels = scales::comma_format()) +
-    guides(fill = guide_legend(order = 2, nrow = 1),
-           color = guide_legend(order = 1))  +
-    # Add text annotations for max cumulative values
-    geom_text(data = data.frame(
-      Type = c("Postfire Planting Acres", "Postfire Planting Acres", 
-               rep("Burned Acres by Severity", 6)),
-      label = c(paste("Cumulative Net:", scales::comma(max_planted_net)),
-                paste("Cumulative Gross:", scales::comma(max_planted_gross)),
-                max_burned_by_severity$label,
-                paste("Total Cumulative:", scales::comma(total_burned))),
-      x = rep(mean(c(min_year, max_year)), 8),  # Center the labels horizontally
-      y = rep(Inf, 8),
-      vjust = c(3.5, 2, 9.5, 8, 6.5, 5, 3.5, 2)
-    ),
-    aes(x = x, y = y, label = label, vjust = vjust),
-    hjust = 0.5, size = 3.5)
+    guides(fill = guide_legend(nrow = 1, reverse = TRUE))
 }
 
-cumulative_planted_severity <- cumulative_planted_severity_plot(combined_cumulative, severity_summary)
+cumulative_planted_severity <- cumulative_planted_severity_plot(gross_by_fire_activity_year, severity_summary)
 print(cumulative_planted_severity)
 
-ggsave("cumulative_planted_severity.png", cumulative_planted_severity, width = 7, height = 5)
+ggsave("cumulative_planted_severity.png", cumulative_planted_severity, width = 7, height = 4)
+
+
 
 #### Cumulative % Planted ####
 
@@ -252,141 +236,5 @@ Cumulative_Treatments <- cumulative_treatments_acres(combined_cumulative)
 # Save cumulative treatments acres plot
 ggsave("Cumulative_Treatments.png", Cumulative_Treatments, width = 7, height = 5)
 
-# 
-# 
-# index_burned_planted <- function(combined_cumulative, burned_area_by_year) {
-#   # Process planted area data
-#   planted_data <- combined_cumulative %>%
-#     filter(type_labels == "Initial Planting") %>%
-#     rename(year = end_year) %>%
-#     select(year, net_acres) %>%
-#     rename(planted_acres = net_acres)
-#   
-#   # Process burned area data
-#   burned_data <- burned_area_by_year %>%
-#     rename(year = Ig_Year) %>%
-#     select(year, cumulative_acres_burned)
-#   
-#   # Combine the data
-#   combined_data <- full_join(planted_data, burned_data, by = "year") %>%
-#     arrange(year) %>%
-#     filter(!is.na(planted_acres) & !is.na(cumulative_acres_burned))
-#   
-#   # Calculate indexed growth (set first year to 100)
-#   first_year <- min(combined_data$year, na.rm = TRUE)
-#   combined_data <- combined_data %>%
-#     mutate(
-#       indexed_planted = planted_acres / planted_acres[year == first_year],
-#       indexed_burned = cumulative_acres_burned / cumulative_acres_burned[year == first_year]
-#     )
-#   
-#   # Reshape data from wide to long format
-#   data_long <- combined_data %>%
-#     select(year, indexed_planted, indexed_burned) %>%
-#     pivot_longer(cols = c(indexed_planted, indexed_burned), 
-#                  names_to = "category", 
-#                  values_to = "value")
-#   
-#   # Create the plot
-#   ggplot(data_long, aes(x = year, y = value, color = category)) +
-#     geom_line(size = 1.2) +
-#     geom_point(size = 3) +
-#     scale_y_continuous(
-#       labels = scales::percent_format(scale = 1),
-#       name = "Indexed Growth (%)",
-#       expand = expansion(mult = c(0.05, 0.1))
-#     ) +
-#     scale_x_continuous(breaks = seq(min(combined_data$year), max(combined_data$year), by = 2)) +
-#     scale_color_manual(values = c("indexed_planted" = "#82ca9d", "indexed_burned" = "#8884d8"),
-#                        labels = c("Cumulative Planted Area", "Cumulative Burned Area")) +
-#     labs(
-#       title = "Indexed Growth: Cumulative Planted vs Burned Areas",
-#       subtitle = paste(first_year, "-", max(combined_data$year)),
-#       x = "Year",
-#       color = "Category"
-#     ) +
-#     theme_bw() +
-#     theme(
-#       plot.title = element_text(hjust = 0.5, face = "bold"),
-#       plot.subtitle = element_text(hjust = 0.5),
-#       legend.position = "bottom",
-#       panel.grid.minor = element_blank()
-#     )
-# }
-# 
-# # Usage
-# cumulative_planted_burned_indexed <- index_burned_planted(combined_cumulative, burned_area_by_year)
-# ggsave("indexed_growth_plot_cumulative_data.png", plot = cumulative_planted_burned_indexed, width = 10, height = 6, dpi = 300)
-# 
-# 
-# 
-# fig = {
-#   jpeg(filename = "combined_cumulative_treat.jpg",
-#        width = 700, height = 500,
-#        quality = 100,
-#        bg = "white",
-#        symbolfamily="default")
-#   p = ggplot() +
-#     theme_bw() +
-#     geom_area(data = combined_cumulative_treat, aes(x = end, y = gross_acres, fill = "Gross Acres to Date"), alpha = 0.9) +
-#     geom_area(data = combined_cumulative_treat, aes(x = end, y = net_acres, fill = "Net Acres to Date"), alpha = 0.9) +
-#     geom_line(data = combined_cumulative_5years_treat, 
-#               aes(x = end, y = gross_acres, color = "Gross Acres <= 5 Years Postfire"), linewidth = 1.25) +
-#     geom_line(data = combined_cumulative_5years_treat, 
-#               aes(x = end, y = net_acres, color = "Net Acres <= 5 Years Postfire"), linewidth = 1.25) +
-#     ggtitle("Cumulative Postfire Reforestation Activities in R5, 2002 - 2023 (Treatments)") +
-#     labs(x = "Year", y = "Activity Acres") +
-#     scale_x_continuous(breaks = seq(2000, 2024, 5)) +
-#     scale_y_continuous(labels = scales::comma) +
-#     facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
-#     scale_fill_manual(values = c("Gross Acres to Date" = "gray50", "Net Acres to Date" = "gray80")) +
-#     scale_color_manual(values = c("Gross Acres <= 5 Years Postfire" = "blue2", "Net Acres <= 5 Years Postfire" = "orangered2")) +
-#     theme(legend.position="bottom", 
-#           legend.box = "horizontal", 
-#           legend.text = element_text(size=12),
-#           plot.title = element_text(size=15), 
-#           plot.margin = margin(t=10,r=20,b=10,l=10),
-#           axis.title = element_text(face="bold", size=13),
-#           axis.text.x = element_text(size=12),
-#           axis.text.y = element_text(size=12),
-#           strip.text = element_text(face="bold", size=13)) +
-#     guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL, nrow=2))
-#   print(p)
-#   dev.off()
-# }
-# 
-# 
-# fig = {
-#   jpeg(filename = "combined_cumulative_monitor.jpg",
-#        width = 700, height = 500,
-#        quality = 100, bg = "white")
-#   p = ggplot() +
-#     theme_bw() +
-#     geom_area(data = combined_cumulative_monitor, aes(x = end, y = gross_acres, fill = "Gross Acres to Date"), alpha = 0.9) +
-#     geom_area(data = combined_cumulative_monitor, aes(x = end, y = net_acres, fill = "Net Acres to Date"), alpha = 0.9) +
-#     geom_line(data = combined_cumulative_5years_monitor, 
-#               aes(x = end, y = gross_acres, color = "Gross Acres <= 5 Years Postfire"), linewidth = 1.25) +
-#     geom_line(data = combined_cumulative_5years_monitor, 
-#               aes(x = end, y = net_acres, color = "Net Acres <= 5 Years Postfire"), linewidth = 1.25) +
-#     ggtitle("Cumulative Postfire Reforestation Activities in R5, 2002 - 2023 (Monitoring)") +
-#     labs(x = "Year", y = "Activity Acres") +
-#     scale_x_continuous(breaks = seq(2000, 2024, 5)) +
-#     scale_y_continuous(labels = scales::comma) +
-#     facet_wrap(~ type_labels, ncol = 3, scales = "free_y") +
-#     scale_fill_manual(values = c("Gross Acres to Date" = "gray50", "Net Acres to Date" = "gray80")) +
-#     scale_color_manual(values = c("Gross Acres <= 5 Years Postfire" = "blue2", "Net Acres <= 5 Years Postfire" = "orangered2")) +
-#     theme(legend.position="bottom", 
-#           legend.box = "horizontal", 
-#           legend.text = element_text(size=12),
-#           plot.title = element_text(size=15), 
-#           plot.margin = margin(t=10,r=20,b=10,l=10),
-#           axis.title = element_text(face="bold", size=13),
-#           axis.text.x = element_text(size=12),
-#           axis.text.y = element_text(size=12),
-#           strip.text = element_text(face="bold", size=13)) +
-#     guides(fill=guide_legend(title=NULL, nrow=2), color=guide_legend(title=NULL, nrow=2))
-#   print(p)
-#   dev.off()
-# }
-# 
-# 
+
+
