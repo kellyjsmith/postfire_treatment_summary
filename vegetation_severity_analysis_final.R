@@ -1,6 +1,4 @@
-# Part 1: Zonal Analysis
 
-# Load required libraries
 library(terra)
 library(sf)
 library(tidyverse)
@@ -36,28 +34,6 @@ saveRDS(net_activities, "net_activities.RDS")
 
 
 
-# write.csv(net_activities %>% st_drop_geometry(), "net_activities.csv")
-
-
-# Prepare all activities data 
-# (these are not currently used in the veg/severity analyses)
-# prepare_all_activities <- function(activities) {
-#   activities %>%
-#     st_collection_extract("POLYGON") %>%
-#     mutate(fire_id = paste(Incid_Name, Ig_Year, sep="_")) %>%
-#     group_by(type_labels, Ig_Year, fire_id) %>%
-#     summarize(geometry = sum(st_area(geometry)),
-#               min_diff = min(diff_years, na.rm = TRUE),
-#               mean_diff = median(diff_years, na.rm = TRUE),
-#               max_diff = max(diff_years, na.rm = TRUE)) %>%
-#     ungroup() %>%
-#     mutate(gross_acres = as.numeric(st_area(geometry))/4046.86)
-# }
-# 
-# all_activities <- prepare_all_activities(assigned_activities)
-
-
-
 # Prepare total burned areas data
 prepare_burned_areas <- function(fire_events) {
   fire_events %>%
@@ -74,11 +50,15 @@ burned_areas <- prepare_burned_areas(fire_events)
 saveRDS(burned_areas, "burned_areas.RDS")
 burned_areas <- readRDS("burned_areas.RDS")
 
+
 # Split data
 net_activities_list <- group_split(net_activities, type_labels, Ig_Year, fire_id)
 burned_areas_list <- group_split(burned_areas, Ig_Year, fire_id)
 
-# Function to process activities raster area (modified to include type_labels)
+
+
+
+# Function to process activities raster area (non-spatial)
 process_activities_raster_area <- function(x, evt_raster_file, evt_csv, mtbs_folder="../Data/Severity") {
   # Load rasters
   severity_file <- paste0(mtbs_folder, "/mtbs_CA_", x$Ig_Year, ".tif")
@@ -244,6 +224,10 @@ severity_summary <- bind_rows(
 saveRDS(veg_summary, "veg_summary.RDS")
 saveRDS(severity_summary, "severity_summary.RDS")
 
+veg_summary <- readRDS("veg_summary.RDS")
+
+
+
 
 
 
@@ -252,23 +236,18 @@ library(sf)
 library(dplyr)
 library(purrr)
 
-# Modified process_activities_raster_area function
 process_activities_raster_area <- function(x, evt_raster_file, evt_csv, mtbs_folder="../Data/Severity") {
-  # Load rasters
   severity_file <- paste0(mtbs_folder, "/mtbs_CA_", x$Ig_Year[1], ".tif")
   severity_raster <- rast(severity_file)
   evt_raster <- rast(evt_raster_file)
   
-  # Prepare and crop data
   activity_vect <- vect(x)
   activity_vect <- project(activity_vect, crs(evt_raster))
   evt_mask <- mask(crop(evt_raster, ext(activity_vect)), activity_vect)
   severity_mask <- mask(crop(severity_raster, ext(activity_vect)), activity_vect)
   
-  # Calculate cell size in acres
   cell_size_acres <- prod(res(evt_raster)) / 4046.86
   
-  # Summarize vegetation and severity
   veg_summary <- as.data.frame(freq(evt_mask)) %>%
     set_names(c("Layer", "EVT_VALUE", "Count")) %>%
     mutate(Area_acres = Count * cell_size_acres)
@@ -280,7 +259,6 @@ process_activities_raster_area <- function(x, evt_raster_file, evt_csv, mtbs_fol
                               "4" = "High", "5" = "Increased Greenness", 
                               "6" = "Non-Processing Area")[as.character(Severity)])
   
-  # Merge EVT data and add metadata
   veg_summary <- merge(veg_summary, 
                        evt_csv[, c("VALUE", "EVT_NAME", "EVT_PHYS")], 
                        by.x = "EVT_VALUE", by.y = "VALUE",
@@ -288,39 +266,43 @@ process_activities_raster_area <- function(x, evt_raster_file, evt_csv, mtbs_fol
     mutate(fire_id = x$fire_id[1],
            Ig_Year = x$Ig_Year[1],
            type_labels = x$type_labels[1],
+           US_L3NAME = x$US_L3NAME[1],
            min_diff = x$min_diff[1],
            mean_diff = x$mean_diff[1],
            max_diff = x$max_diff[1],
            min_prod = x$min_prod[1],
            mean_prod = x$mean_prod[1],
-           max_prod = x$max_prod[1])
+           max_prod = x$max_prod[1],
+           mean_reburns = x$mean_reburns[1],
+           min_reburns = x$min_reburns[1],
+           max_reburns = x$max_reburns[1])
   
   severity_summary <- severity_summary %>%
     mutate(fire_id = x$fire_id[1],
            Ig_Year = x$Ig_Year[1],
            type_labels = x$type_labels[1],
+           US_L3NAME = x$US_L3NAME[1],
            min_diff = x$min_diff[1],
            mean_diff = x$mean_diff[1],
            max_diff = x$max_diff[1],
            min_prod = x$min_prod[1],
            mean_prod = x$mean_prod[1],
-           max_prod = x$max_prod[1])
+           max_prod = x$max_prod[1],
+           mean_reburns = x$mean_reburns[1],
+           min_reburns = x$min_reburns[1],
+           max_reburns = x$max_reburns[1])
   
-  # Combine summaries into a list
   result <- list(vegetation = veg_summary, severity = severity_summary)
   
-  # Add geometry to both summaries
   result$vegetation$geometry <- st_geometry(x)
   result$severity$geometry <- st_geometry(x)
   
-  # Convert both to sf objects
   result$vegetation <- st_as_sf(result$vegetation)
   result$severity <- st_as_sf(result$severity)
   
   return(result)
 }
 
-# Modified process_areas function
 process_areas <- function(areas_list, evt_raster_file, evt_csv) {
   map(areas_list,
       ~process_activities_raster_area(., evt_raster_file, evt_csv),
@@ -328,31 +310,28 @@ process_areas <- function(areas_list, evt_raster_file, evt_csv) {
 }
 
 # Load necessary data
-processed_activities <- readRDS("processed_activities.RDS")
+net_activities_eco <- readRDS("net_activities_eco_with_reburns.RDS")
 evt_raster_file <- "../Data/landfire/LC23_EVT_240.tif"
 evt_csv <- read.csv("../Data/landfire/LF23_EVT_240.csv")
 
-# Prepare net_activities
-net_activities <- prepare_net_activities(processed_activities)
-
 # Split data
-net_activities_list <- group_split(net_activities, type_labels, Ig_Year, fire_id)
+net_activities_eco_list <- group_split(net_activities_eco, type_labels, Ig_Year, fire_id, US_L3NAME)
 
 # Process activities
-vegetation_severity_activities <- process_areas(net_activities_list, evt_raster_file, evt_csv)
+vegetation_severity_activities <- process_areas(net_activities_eco_list, evt_raster_file, evt_csv)
 
 # Separate vegetation and severity summaries
 extract_summaries <- function(data, type) {
   map_dfr(data, ~.x[[type]])
 }
 
-vegetation_activities <- extract_summaries(vegetation_severity_activities, "vegetation")
-severity_activities <- extract_summaries(vegetation_severity_activities, "severity")
+vegetation_activities_eco <- extract_summaries(vegetation_severity_activities, "vegetation")
+severity_activities_eco <- extract_summaries(vegetation_severity_activities, "severity")
 
 # Save outputs
-saveRDS(vegetation_activities, "vegetation_net_activities_summary.RDS")
-saveRDS(severity_activities, "severity_net_activities_summary.RDS")
+saveRDS(vegetation_activities_eco, "vegetation_net_activities_eco_summary.RDS")
+saveRDS(severity_activities_eco, "severity_net_activities_eco_summary.RDS")
 
 # Write shapefiles
-st_write(vegetation_activities, "vegetation_net_activities_summary.shp", append=FALSE)
-st_write(severity_activities, "severity_net_activities_summary.shp", append=FALSE)
+st_write(vegetation_activities, "vegetation_net_activities_eco_summary.shp", append=FALSE)
+st_write(severity_activities, "severity_net_activities_eco_summary.shp", append=FALSE)

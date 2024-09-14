@@ -20,6 +20,8 @@ fire_events <- facts_fires$fires %>%
 
 
 burned_summary <- fires_fires %>%
+  st_collection_extract() %>%
+  st_cast("MULTIPOLYGON") %>%
   st_intersection(cal_eco3 %>% select(US_L3NAME)) %>%
   mutate(area = st_area(.)) %>%
   group_by(fire_id, Ig_Year, US_L3NAME) %>%
@@ -51,30 +53,39 @@ fire_summary_reburns <- burned_summary %>%
     .groups = "drop"
   ) %>%
   arrange(desc(total_acres))
+
+
 reburn_plot <- ggplot(fire_summary_reburns, aes(x = reorder(US_L3NAME, total_acres))) +
   geom_col(aes(y = total_acres, fill = "Total Burned"), width = 0.7) +
   geom_col(aes(y = reburned_acres, fill = "Reburned"), width = 0.7) +
   scale_fill_manual(values = c("Total Burned" = "red", "Reburned" = "darkred"),
                     name = "Burn Category") +
-  labs(title = "Total and Reburned Acres by Ecoregion",
-       subtitle = "USFS Region 5, 2000-2021\nReburned acres represent areas burned multiple times within the study period",
-       x = "Level III\nEcoregion",
-       y = "Area\n(Acres)") +
+  geom_text(
+    data = fire_summary_reburns %>% filter(grepl("Basin and Range$", US_L3NAME)),
+    aes(y = total_acres, label = scales::comma(round(total_acres))),
+    hjust = -0.1,
+    size = 3,
+    color = "black"
+  ) +
+  labs(title = "Total Acres Burned and Reburned by Ecoregion",
+       subtitle = "USFS Region 5, 2000-2021\nReburned acres represent areas where multiple fire polygons intersect",
+       x = "Ecoregion",
+       y = "Acres") +
   theme_bw(base_size = 11) +
   theme(
     legend.position = "top",
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
     axis.text.y = element_text(size = 9),
     axis.title = element_text(face = "bold", size = 10),
     axis.title.x = element_text(margin = margin(t = 10)),
     axis.title.y = element_text(margin = margin(r = 10)),
     plot.title = element_text(face = "bold", size = 12),
+    plot.title.position = "plot",
     plot.subtitle = element_text(size = 10),
     legend.title = element_text(face = "bold", size = 10),
     legend.text = element_text(size = 9),
-    panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_line(color = "gray90", size = 0.2)
+    panel.grid.major.x = element_line(color = "gray80", size = 0.2),
+    panel.grid.minor.x = element_line(color = "gray90", size = 0.2)
   ) +
   scale_y_continuous(
     labels = scales::comma_format(scale = 1e-6, suffix = "M"),
@@ -84,7 +95,7 @@ reburn_plot <- ggplot(fire_summary_reburns, aes(x = reorder(US_L3NAME, total_acr
 
 print(reburn_plot)
 
-ggsave("reburn_acres_by_ecoregion.png", reburn_plot, width = 10, height = 8, dpi = 300)
+ggsave("reburn_acres_by_ecoregion.png", reburn_plot, width = 7, height = 4, dpi = 300)
 
 summary_table <- fire_summary_reburns %>%
   mutate(Percent_Reburned = reburned_acres / total_acres * 100)

@@ -341,6 +341,7 @@ ggsave("planted_veg_faceted.png", planted_veg_faceted, width = 7, height = 5)
 treatment_percentages_by_vegetation <- function(veg_summary) {
   # Prepare data
   treatment_data <- veg_summary %>%
+    st_drop_geometry() %>%
     filter(Total_acres > 0.3) %>%
     filter(Category %in% c("All Activities", "Total Burned"),
            type_labels %in% c("Initial Planting", "Fill-in or Replant", "Release - Chemical", "Release - Non-Chemical", 
@@ -414,18 +415,18 @@ treatment_percentages_by_vegetation <- function(veg_summary) {
                        labels = c(seq(min(complete_data$Ig_Year), max(complete_data$Ig_Year), by = 5), 
                                   "Overall")) +
     scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-    labs(title = "Distribution of Postfire Activity Area by Vegetation Type",
-         subtitle = "Percentage of Total Acres by Ignition Year - USFS Region 5, 2000 - 2021",
+    labs(title = "Distribution of Existing Vegetation Type in Postfire Activity Areas",
+         subtitle = "Percentage of Total Net Acres by Fire Year - USFS Region 5, 2000 - 2021",
          x = "Ignition Year",
-         y = "Percentage of Total Acres") +
+         y = "Percentage of Net Acres") +
     theme_bw(base_size = 10) +
     theme(
       axis.text.x = element_text(hjust = 0.5, size = 9),
       strip.text = element_text(size = 9, face = "bold"),
       legend.text = element_text(size = 9),
-      legend.title = element_text(face = "bold", size = 9), 
-      plot.title = element_text(face = "bold", size = 10),
-      plot.subtitle = element_text(size = 9),
+      legend.title = element_text(face = "bold", size = 10), 
+      plot.title = element_text(face = "bold", size = 11),
+      plot.subtitle = element_text(size = 10),
       plot.margin = margin(10, 10, 10, 10),
       axis.title = element_text(face = "bold", size = 10),
       axis.text.y = element_text(size = 9),
@@ -450,7 +451,7 @@ treatment_percentages_by_vegetation <- function(veg_summary) {
       legend.text = element_text(size = 9),
       legend.title = element_text(face = "bold", size = 10), 
       plot.title = element_text(face = "bold", size = 10),
-      plot.subtitle = element_text(size = 9),
+      plot.subtitle = element_text(size = 10),
       plot.margin = margin(10, 10, 10, 10),
       axis.title = element_text(face = "bold", size = 10),
       axis.text.y = element_text(size = 9),
@@ -471,11 +472,11 @@ treatment_percentages_by_vegetation <- function(veg_summary) {
     theme(
       axis.title.y = element_text(margin = margin(r = 10)),
       legend.text = element_text(size = 9),
-      legend.title = element_text(face = "bold", size = 9), 
+      legend.title = element_text(face = "bold", size = 10), 
       plot.title = element_text(face = "bold", size = 10),
       plot.subtitle = element_text(size = 10),
       plot.margin = margin(10, 10, 10, 10),
-      axis.title = element_text(face = "bold", size = 9),
+      axis.title = element_text(face = "bold", size = 10),
       axis.text.y = element_text(size = 9),
       legend.position = "bottom",
       legend.margin = margin(r = 40)
@@ -489,7 +490,7 @@ treatment_percentages_by_vegetation <- function(veg_summary) {
   combined_summary_plot <- summary_plot_treatments / summary_plot_total_burned +
     plot_layout(heights = c(7, 1)) +
     plot_annotation(
-      title = "Overall Distribution of Vegetation Types",
+      title = "Overall Distribution of Vegetation Types in Postfire Reforestation Areas",
       subtitle = "By Treatment Type and Total Burned Area, USFS R5 Fires - 2000-2021",
       theme = theme(plot.title = element_text(face = "bold", size = 11),
                     plot.subtitle = element_text(size = 10))
@@ -506,7 +507,7 @@ print(Treatment_Percentages_By_Vegetation$main_plot)
 print(Treatment_Percentages_By_Vegetation$combined_summary_plot)
 
 # Save plots
-ggsave("veg_percent_by_year.png", Treatment_Percentages_By_Vegetation$main_plot, width = 7, height = 6)
+ggsave("veg_percent_by_year.png", Treatment_Percentages_By_Vegetation$main_plot, width = 7, height = 5)
 ggsave("veg_percent_summary.png", Treatment_Percentages_By_Vegetation$combined_summary_plot, width = 7, height = 4)
 
 
@@ -607,3 +608,60 @@ print(Treatment_Vegetation_Plots$harvest_prep)
 # Save plots
 ggsave("Reforestation_Release_Treatments_Vegetation.png", Treatment_Vegetation_Plots$reforest_release, width = 10, height = 8)
 ggsave("Harvest_SitePrep_Treatments_Vegetation.png", Treatment_Vegetation_Plots$harvest_prep, width = 10, height = 6)
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# Prepare the data
+veg_by_productivity <- veg_severity_eco %>%
+  filter(type_labels == "Initial Planting") %>%
+  mutate(productivity_group = cut(weighted_mean_prod, 
+                                  breaks = seq(0, ceiling(max(weighted_mean_prod)), by = 1),
+                                  labels = seq(1, ceiling(max(weighted_mean_prod))),
+                                  include.lowest = TRUE)) %>%
+  group_by(productivity_group, Veg_Type) %>%
+  summarize(Acres = sum(Acres, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(productivity_group))
+
+# Calculate total acres for the secondary axis
+total_by_productivity <- veg_by_productivity %>%
+  group_by(productivity_group) %>%
+  summarize(Total = sum(Acres),
+            Percent_of_Total = Total / sum(Total) * 100)
+
+# Color scheme from figures_vegetation
+veg_colors <- c("Conifer" = "springgreen4", 
+                "Shrubland" = "goldenrod", 
+                "Hardwood" = "purple2",
+                "Grassland" = "yellow",
+                "Other" = "gray70")
+
+# Create the plot
+ggplot(veg_by_productivity, aes(x = productivity_group, y = Acres)) +
+  geom_col(aes(fill = Veg_Type), position = "stack") +
+  scale_fill_manual(values = veg_colors) +
+  scale_y_continuous(labels = comma_format(), 
+                     sec.axis = sec_axis(~./1000, name = "Percent of Total Planted Acres", labels = function(x) paste0(x, "%"))) +
+  labs(title = "Planted Acres by Vegetation Type and Productivity Class",
+       subtitle = "USFS Region 5, 2000-2021 | ",
+       x = "Productivity Class",
+       y = "Acres",
+       fill = "Vegetation Type") +
+  theme_bw(base_size = 11) +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
+    axis.text.y = element_text(size = 9),
+    axis.title = element_text(face = "bold", size = 10),
+    plot.title = element_text(face = "bold", size = 12),
+    plot.subtitle = element_text(size = 10),
+    panel.grid.minor = element_blank(),
+    legend.title = element_text(face = "bold", size = 10),
+    legend.text = element_text(size = 9)
+  )
+
+ggsave("planted_acres_by_veg_type_and_productivity.png", width = 12, height = 7)

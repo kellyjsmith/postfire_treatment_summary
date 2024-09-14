@@ -300,15 +300,15 @@ write.csv(final_table, "combined_postfire_activities.csv", row.names = FALSE)
 
 
 
-
-
-mean_acres_by_year = assigned_activities %>%
-  st_collection_extract() %>%
-  group_by(type_labels, Ig_Year) %>%
-  summarize(geometry = sum(st_area(geometry))) %>%
-  group_by(type_labels) %>%
-  summarize(mean_acres = mean(as.numeric(st_area(geometry))/4046.86)) %>%
-  st_drop_geometry()
+# 
+# 
+# mean_acres_by_year = assigned_activities %>%
+#   st_collection_extract() %>%
+#   group_by(type_labels, Ig_Year) %>%
+#   summarize(geometry = sum(st_area(geometry))) %>%
+#   group_by(type_labels) %>%
+#   summarize(mean_acres = mean(as.numeric(st_area(geometry))/4046.86)) %>%
+#   st_drop_geometry()
 
 
 # Create fire_id column
@@ -321,36 +321,49 @@ fire_events <- facts_fires$fires %>%
 
 # Summarize the data
 burned_once <- fires_fires %>%
-  group_by(fire_id) %>%
+  group_by(Ig_Year, fire_id) %>%
   summarize(
     acres_burned_once = sum(ifelse(n.overlaps == 1, area, 0)) / 4046.86, # Convert m^2 to acres
-    complete_reburn = sum(ifelse(acres_burned_once == 0, 1, 0)), 
-    Max_Overlaps = max(n.overlaps)
-  ) %>%
+    n_overlaps = sum(n.overlaps)
+  )
+
+total_fire = fire_events %>%
+  # group_by(Ig_Year, fire_id) %>% 
+  summarize(total_acres = sum(as.numeric(st_area(geometry)))/4046.86) %>%
   st_drop_geometry()
 
-total_fire_events = fire_events %>%
-  group_by(fire_id) %>% 
-  summarize(total_acres = sum(as.numeric(st_area(geometry)))/4046.86) %>% 
-  st_drop_geometry
 
 # Calculate overall statistics
-overall_total <- total_fire_events %>%
-  left_join(burned_once) %>%
+fire_summary_reburns <- burned_once %>%
+  left_join(total_fire_events) %>%
   mutate(reburned_acres = total_acres - acres_burned_once) %>%
-  ungroup() %>%
-  summarize(
-    Total_Fires = n_distinct(fire_id),
-    Total_Acres_Burned_Once = sum(acres_burned_once),
-    Total_Acres_Reburned = sum(reburned_acres),
-    Total_Acres = sum(total_acres),
-    Overall_Percent_Reburned = (sum(reburned_acres) / sum(total_acres)) * 100,
-    Complete_Reburn_n = sum(complete_reburn),
-    Complete_Reburn_acres = sum(ifelse(acres_burned_once == 0, reburned_acres, 0))
-  ) %>%
-  arrange(desc(Total_Acres))
+  group_by(Ig_Year, fire_id) %>%
+  summarize(total_acres = total_acres,
+            acres_burned_once = acres_burned_once,
+            reburned_acres = reburned_acres,
+            n_overlaps = n_overlaps)
+  # 
+  # summarize(
+  #   `N Fires` = n_distinct(fire_id),
+  #   `Total Acres Burned` = sum(total_acres),
+  #   `Acres Reburned` = sum(reburned_acres),
+  #   `(%)` = (sum(reburned_acres) / sum(total_acres)) * 100,
+  # ) %>%
+  # arrange(desc(`Total Acres Burned`))
 
-view(overall_total)
+view(fire_summary_reburns)
+write.csv(fire_summary_reburns, "fire_summary_reburns.csv")
+
+# intersect with eco layer
+cal_eco3 <- st_read("../Data/ca_eco_l3.shp")
+cal_eco3 <- st_transform(cal_eco3, crs(fire_summary_reburns))
+
+fire_summary_reburns_eco <- fire_summary_reburns %>%
+  st_collection_extract() %>%
+  st_cast("MULTIPOLYGON") %>%
+  st_intersection(cal_eco3 %>% select(US_L3NAME))
+
+
 
 
 severity_by_fire = severity_burned %>%

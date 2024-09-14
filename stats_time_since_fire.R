@@ -104,7 +104,7 @@ mean_diff_ig_year_plot <- ggplot(weighted_mean_diff_ig_year,
   scale_color_viridis_d(option = "plasma", end = 0.9) +
   labs(title = "Average # of Years Between Fire and Reforestation Activity",
        subtitle = "USFS R5 Fires by Ignition Year, 2000-2021\n
-       Mean Weighted by Net Area for Each Fire",
+       Means Weighted by Net Area of Activity for Each Fire",
        x = "Ignition Year",
        y = "Mean Years Since Fire") +
   theme_bw(base_size = 10) +
