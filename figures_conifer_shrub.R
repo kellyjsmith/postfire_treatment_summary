@@ -123,7 +123,7 @@ ggsave("conifer_percent_by_severity.png", width = 10, height = 6)
 
 
 # Conifer:shrub by severity and eco
-shrubifer_by_severity_eco <- veg_severity_eco %>%
+shrubifer_by_severity_eco <- planted_veg_severity_eco %>%
   group_by(fire_id, US_L3NAME, Severity_Class) %>%
   summarize(
     Total_Acres = sum(Acres),
@@ -208,93 +208,6 @@ ggplot(temporal_conifer, aes(x = Ig_Year, y = Conifer_Percent, color = Severity_
 
 ggsave("temporal_conifer_trends.png", width = 12, height = 8)
 
-# 5. Reforestation success metric
-
-# Recalculate reforestation success score
-reforestation_success <- veg_severity_eco %>%
-  group_by(fire_id, US_L3NAME, Ig_Year) %>%
-  summarize(
-    Total_Acres = sum(Acres),
-    Conifer_Acres = sum(Acres[Veg_Type == "Conifer"]),
-    Shrub_Acres = sum(Acres[Veg_Type == "Shrubland"]),
-    Conifer_Percent = Conifer_Acres / Total_Acres * 100,
-    Conifer_Shrub_Ratio = Conifer_Acres / (Shrub_Acres + 0.1),
-    Success_Score = (Conifer_Percent + (Conifer_Shrub_Ratio / (1 + Conifer_Shrub_Ratio)) * 100) / 2,
-    .groups = "drop"
-  )
-
-# Visualize the new reforestation success score
-ggplot(reforestation_success, aes(x = reorder(US_L3NAME, -Success_Score), y = Success_Score)) +
-  geom_boxplot(fill = "lightgreen", alpha = 0.7) +
-  coord_flip() +
-  labs(title = "Revised Reforestation Success by Ecoregion",
-       x = "Ecoregion",
-       y = "Reforestation Success Score") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5))
-
-ggsave("revised_reforestation_success_by_ecoregion.png", width = 12, height = 8)
 
 
 
-# Calculate reforestation success score by fire, severity class, and ecoregion
-reforestation_success_eco <- veg_severity_eco %>%
-  group_by(fire_id, US_L3NAME, Ig_Year, Severity_Class) %>%
-  summarize(
-    Total_Acres = sum(Acres),
-    Conifer_Acres = sum(Acres[Veg_Type == "Conifer"]),
-    Shrub_Acres = sum(Acres[Veg_Type == "Shrubland"]),
-    Conifer_Percent = Conifer_Acres / Total_Acres * 100,
-    Conifer_Shrub_Ratio = Conifer_Acres / (Shrub_Acres + 0.1),
-    Success_Score = (Conifer_Percent + (Conifer_Shrub_Ratio / (1 + Conifer_Shrub_Ratio)) * 100) / 2,
-    .groups = "drop"
-  )
-
-# Create summary table
-reforestation_success_eco_summary <- reforestation_success_eco %>%
-  group_by(US_L3NAME, Severity_Class) %>%
-  summarize(
-    Mean_Success_Score = mean(Success_Score, na.rm = TRUE),
-    Median_Success_Score = median(Success_Score, na.rm = TRUE),
-    SD_Success_Score = sd(Success_Score, na.rm = TRUE),
-    Total_Acres = sum(Total_Acres),
-    Number_of_Fires = n_distinct(fire_id),
-    .groups = "drop"
-  ) %>%
-  arrange(US_L3NAME, Severity_Class)
-
-# Print the table
-print(kable(reforestation_success_eco_summary, digits = 2))
-
-# Save the table as a CSV file
-write.csv(reforestation_success_eco_summary, "reforestation_success_summary.csv", row.names = FALSE)
-
-# Create a more detailed table with top 6 ecoregions by total acres
-top_6_ecoregions <- reforestation_success_eco_summary %>%
-  group_by(US_L3NAME) %>%
-  summarize(Total_Acres = sum(Total_Acres)) %>%
-  top_n(6, Total_Acres) %>%
-  pull(US_L3NAME)
-
-reforestation_success_stats <- reforestation_success_eco %>%
-  filter(US_L3NAME %in% top_6_ecoregions) %>%
-  group_by(US_L3NAME, Severity_Class) %>%
-  summarize(
-    Mean_Success_Score = mean(Success_Score, na.rm = TRUE),
-    Median_Success_Score = median(Success_Score, na.rm = TRUE),
-    SD_Success_Score = sd(Success_Score, na.rm = TRUE),
-    Total_Acres = sum(Total_Acres),
-    Number_of_Fires = n_distinct(fire_id),
-    Min_Success_Score = min(Success_Score, na.rm = TRUE),
-    Max_Success_Score = max(Success_Score, na.rm = TRUE),
-    Q1_Success_Score = quantile(Success_Score, 0.25, na.rm = TRUE),
-    Q3_Success_Score = quantile(Success_Score, 0.75, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  arrange(US_L3NAME, Severity_Class)
-
-# Print the detailed table
-print(kable(reforestation_success_stats, digits = 2))
-
-# Save the detailed table as a CSV file
-write.csv(reforestation_success_stats, "reforestation_success_detailed_summary.csv", row.names = FALSE)

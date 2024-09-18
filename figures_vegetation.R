@@ -111,7 +111,7 @@ planted_burned_veg_facets <- function(veg_data, max_plant_axis = 35000, max_burn
     plot_layout(heights = c(20,1)) +
     plot_annotation(
       title = "Existing Vegetation Type of Postfire Planted and Total Burned Acres",
-      subtitle = "USFS Region 5 Fires - 2000-2021, Acres Planted through 2022, EVT - 2023",
+      subtitle = "USFS Region 5 | Fires 2000-2021 | Planting 2001-2022 | EVT - 2023",
       theme = theme(
         plot.title = element_text(face = "bold", size = 12),
         plot.subtitle = element_text(size = 11),

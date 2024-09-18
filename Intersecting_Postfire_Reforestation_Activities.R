@@ -361,7 +361,7 @@ facts_fires$assigned_activities <- assign_activities_parallel(
 
 saveRDS(facts_fires,"facts_fires_new.RDS")
 
-# facts_fires = readRDS("facts_fires_new.RDS")
+facts_fires = readRDS("facts_fires_new.RDS")
 
 
 assigned_activities <- facts_fires$assigned_activities

@@ -16,7 +16,8 @@ severity_summary = readRDS("severity_summary.RDS")
 
 
 
-planted_acres_severity_burned_facets <- function(severity_summary, max_plant_axis = 32000, max_burned_axis = 2.5e6) {
+planted_acres_severity_burned_facets <- function(
+    severity_summary, max_plant_axis = 32000, max_burned_axis = 2.5e6) {
   # Prepare planted data
   planted_data <- severity_summary %>%
     st_drop_geometry() %>%
@@ -38,7 +39,9 @@ planted_acres_severity_burned_facets <- function(severity_summary, max_plant_axi
   
   # Prepare burned area data
   burned_data <- severity_summary %>%
-    st_drop_geometry() %>%
+    # select(Ig_Year, Severity) %>%
+    # st_drop_geometry() %>%
+    # filter(Severity != "Non-Processing Area") %>%
     filter(Category == "Total Burned") %>%
     select(Ig_Year, Increased_Greenness_acres, Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres) %>%
     pivot_longer(cols = c(Increased_Greenness_acres, Unburned_to_Low_acres, Low_acres, Moderate_acres, High_acres),
@@ -145,7 +148,7 @@ planted_acres_severity_burned_facets <- function(severity_summary, max_plant_axi
     plot_layout(heights = c(20,1)) +
     plot_annotation(
       title = "Postfire Planting and Total Burned Acres by Severity Class",
-      subtitle = "USFS Region 5 Fires - 2000-2021, Net Acres by Ignition Year through 2022",
+      subtitle = "USFS Region 5 | Fires - 2000-2021 | Planting by Fire Year 2001-2022",
       theme = theme(
         plot.title.position = "plot",
         plot.title = element_text(face = "bold", size = 12),

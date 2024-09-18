@@ -269,7 +269,7 @@ st_crs(veg_severity_planted) <- st_crs(cal_eco3)
 veg_severity_eco <- st_join(veg_severity_planted, cal_eco3)
 
 # Calculate conifer acres and total acres by fire and ecoregion
-conifer_summary <- veg_severity_eco %>%
+conifer_summary <- planted_veg_severity_eco %>%
   group_by(fire_id, Ig_Year, US_L3NAME) %>%
   summarize(
     Conifer_Acres = sum(Acres[Veg_Type == "Conifer"], na.rm = TRUE),
@@ -304,3 +304,91 @@ cal_eco3_with_conifer <- cal_eco3 %>%
 
 # Save the shapefile
 st_write(cal_eco3_with_conifer, "cal_eco3_with_conifer_summary.shp", append = FALSE)
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(forcats)
+library(stringr)
+
+# Filter data for top 6 ecoregions and exclude non-processing area
+SUID_veg_severity_top6_eco <- planted_veg_severity_eco_SUID %>%
+  filter(US_L3NAME %in% top_6_ecoregions,
+         Severity_Class != "Non-Processing Area")
+
+# Rename longer ecoregion names
+ecoregion_names <- c(
+  "Klamath Mountains/California High North Coast Range" = "Klamath Mountains & North Coast",
+  "Eastern Cascades Slopes and Foothills" = "East Cascades Slopes",
+  "Central California Foothills and Coastal Mountains" = "Central Foothills & Coastal Mountains"
+)
+
+veg_severity_top_6 <- veg_severity_top_6 %>%
+  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names))
+
+# Calculate total acres planted for each ecoregion
+total_acres <- veg_severity_top_6 %>%
+  group_by(US_L3NAME) %>%
+  summarize(Total_Acres = sum(Area, na.rm = TRUE)) %>%
+  arrange(desc(Total_Acres))
+
+# Create ordered factor for ecoregions
+ecoregion_order <- total_acres$US_L3NAME
+
+# Add total acres to ecoregion names with proper comma formatting and order
+veg_severity_top_6 <- veg_severity_top_6 %>%
+  left_join(total_acres, by = "US_L3NAME") %>%
+  mutate(US_L3NAME = paste0(US_L3NAME, "\n(", comma(round(Total_Acres)), " planting acres)"),
+         US_L3NAME = factor(US_L3NAME, levels = paste0(ecoregion_order, "\n(", comma(round(total_acres$Total_Acres)), " planting acres)")))
+
+
+# Reorder severity classes
+severity_order <- c("Increased Greenness", "Unburned to Low", "Low", "Moderate", "High")
+veg_severity_top_6$Severity_Class <- factor(veg_severity_top_6$Severity_Class, levels = severity_order)
+
+# Define color palette and order vegetation types
+veg_colors <- c("Conifer" = "springgreen4", 
+                "Shrubland" = "goldenrod", 
+                "Hardwood" = "purple2",
+                "Grassland" = "yellow",
+                "Other" = "gray70")
+
+veg_order <- c("Conifer", "Shrubland", "Hardwood", "Grassland", "Other")
+veg_severity_top_6$Veg_Type <- factor(veg_severity_top_6$Veg_Type, levels = veg_order)
+
+
+# Create faceted plot
+ggplot(veg_severity_top_6, aes(x = fct_rev(Severity_Class), y = Percentage, fill = fct_rev(Veg_Type))) +
+  geom_col(position = "stack", color = "black", size = 0.1) +
+  facet_wrap(~ US_L3NAME, scales = "free_x", ncol = 2) +
+  scale_fill_manual(values = veg_colors, name = "Vegetation Type") +
+  labs(title = "Existing Vegetation Types in Postfire Plantations by Burn Severity & Ecoregion",
+       subtitle = "USFS Region 5 | Fires 2000-2021 | Net Planted & Replanted Acres 2001-2022",
+       x = "Severity Class",
+       y = "% of Net Planted Area") +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.title = element_text(size = 10, face = "bold"),
+    plot.title = element_text(face = "bold", size = 12),
+    plot.title.position = "plot",
+    plot.subtitle = element_text(size = 10),
+    strip.text = element_text(face = "bold", size = 9),
+    legend.title = element_text(face = "bold", size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  guides(fill = guide_legend(nrow = 1, rev = TRUE)) +
+  scale_x_discrete(position = "bottom") +
+  coord_flip()
+
+# Save the plot
+ggsave("veg_severity_distribution_ecoregions.png", width = 7, height = 5.5, dpi = 300)
+
+

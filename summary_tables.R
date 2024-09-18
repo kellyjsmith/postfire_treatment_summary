@@ -8,6 +8,8 @@ setwd("C:/Users/smithke3/Box/Kelly_postfire_reforestation_project/Output")
 
 facts_activities = readRDS("facts_activities_new.RDS")
 intersected_activities = readRDS("intersected_activities_new.RDS")
+processed_activities = readRDS("processed_activities_final.RDS")
+
 assigned_activities = readRDS("assigned_activities_new.RDS")
 fire_events = st_read("R5_fires_00_21.shp")
 
@@ -61,7 +63,6 @@ yearly_weighted_high_severity <- weighted_high_severity %>%
 
 
 late_planting = processed_activities %>%
-  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
   filter(
          type_labels == "Initial Planting",
          diff_years > 12) %>%
@@ -78,7 +79,6 @@ late_planting = processed_activities %>%
 
 net_postfire_acres <- processed_activities %>%
   st_collection_extract() %>%
-  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
   group_by(type_labels, fire_id) %>%
   summarize(geometry = st_union(geometry)) %>%
   mutate(net_acres = as.numeric(st_area(geometry))/4046.86)
@@ -159,9 +159,10 @@ combined_activities_in_plant <- activities_in_plant %>%
   full_join(planted_by_fire, by = c("fire_id", "type_labels", "net_total")) %>%
   select(-geometry)
 
+saveRDS(combined_activities_in_plant, "combined_activities_in_plant.RDS")
 write.csv(activities_in_plantations, "activities_in_plantations.csv")
 
-
+combined_activities_in_plant <- readRDS("combined_activities_in_plant.RDS")
 # Create the total & gross tables then combine with net
 
 facts_acres_by_fire <- intersected_activities %>%
@@ -193,9 +194,8 @@ facts_acres <- facts_acres_by_fire %>%
   st_drop_geometry()
 
 
-gross_postfire_acres_by_fire <- assigned_activities %>%
+gross_postfire_acres_by_fire <- processed_activities %>%
   st_collection_extract() %>%
-  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
   group_by(type_labels, fire_id) %>%
   summarise(geometry = sum(st_area(geometry)),
             n_records = n()) %>%
@@ -268,8 +268,8 @@ monitor_types_report <- c(
   "Reforest. Need - Harvest"
 )
 
-# Update the get_priority function
 get_priority <- function(type) {
+  if (is.na(type)) return(5)  # Assign lowest priority to NA values
   if (type == "Initial Planting") return(1)
   if (type %in% treatment_types_report) return(2)
   if (type %in% monitor_types_report) return(3)
@@ -285,6 +285,9 @@ final_table <- combined_table %>%
   arrange(priority, type_labels) %>%
   select(-priority) # Remove the priority column after sorting
 
+# Verify the result
+print(head(final_table))
+
 # Round numeric columns to 2 decimal places
 numeric_columns <- c("Total FACTS Acres", "Gross Postfire Acres", "Net Postfire Acres", 
                      "Net Acres in Plantations", "Percent Planted Acres")
@@ -296,7 +299,7 @@ final_table <- final_table %>%
 view(final_table)
 
 write.csv(final_table, "combined_postfire_activities.csv", row.names = FALSE)
-
+saveRDS(final_table, "combined_postfire_activities.RDS")
 
 
 

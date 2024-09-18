@@ -174,23 +174,11 @@ processed_activities <- processed_activities %>%
 # Save the final processed activities
 saveRDS(processed_activities, "processed_activities_final.RDS")
 
-# Verification steps
-final_activities <- readRDS("processed_activities_final.RDS")
 
+fires_with_activity <- unique(processed_activities$fire_id)
 
+treated_fires <- facts_fires %>%
+  mutate(fire_id = paste(Incid_Name, Event_ID, sep="_")) %>%
+  filter(fire_id %in% fires_with_activity)
 
-
-# Check for any unexpected NA values in key columns
-summary(final_activities[, c("Event_ID", "Ig_Year", "year", "diff_years", "reburns")])
-
-# Check the range of diff_years
-range(final_activities$diff_years, na.rm = TRUE)
-
-# Verify that all diff_years are non-negative
-all(final_activities$diff_years >= 0, na.rm = TRUE)
-
-# Check for any remaining duplicate column names
-any(duplicated(names(final_activities)))
-
-# Check the distribution of reburns
-table(final_activities$reburns)
+saveRDS(treated_fires, "treated_fires.RDS")

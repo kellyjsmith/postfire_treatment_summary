@@ -127,14 +127,15 @@ library(purrr)
 library(ggplot2)
 library(viridis)
 
-activities_in_plantations_eco <- function(net_activities_eco) {
-  plant <- net_activities_eco %>%
+activities_in_plantations_eco <- function(all_net_activities_eco) {
+  plant <- all_net_activities_eco %>%
     filter(type_labels == "Initial Planting")
   
-  monitoring <- net_activities_eco %>%
+  monitoring <- all_net_activities_eco %>%
     filter(type_labels %in% c("Stocking Survey"))
   
   planted_by_fire <- plant %>%
+    group_by(fire_id, US_L3NAME) %>%
     rename(net_total = net_acres) %>%
     ungroup()
   
@@ -146,7 +147,7 @@ activities_in_plantations_eco <- function(net_activities_eco) {
       n_monitoring = n(),
       weighted_mean_diff = weighted.mean(mean_diff, w = net_acres),
       weighted_mean_prod = weighted.mean(mean_prod, w = net_acres),
-      max_reburns = max(max_reburns),
+      max_reburns = first(max_reburns),
       Ig_Year = first(Ig_Year)
     ) %>%
     ungroup()
@@ -215,7 +216,10 @@ activities_in_plantations_eco <- function(net_activities_eco) {
   return(combined_monitoring_in_plant)
 }
 
-monitoring_in_plantations_eco <- activities_in_plantations_eco(net_activities_eco)
+monitoring_in_plantations_eco <- activities_in_plantations_eco(all_net_activities_eco)
+
+saveRDS(monitoring_in_plantations_eco, "monitoring_in_plantations_eco.RDS")
+
 
 # Create a summary table
 monitoring_summary_by_eco <- monitoring_in_plantations_eco %>%
@@ -239,6 +243,8 @@ monitoring_summary_by_eco <- monitoring_in_plantations_eco %>%
 # Display the summary table
 print(monitoring_summary_by_eco)
 
+saveRDS(monitoring_summary_by_eco, "monitoring_summary_by_eco.RDS")
+
 # Save the summary table
 write.csv(monitoring_summary_by_eco, "monitoring_summary_by_ecoregion.csv", row.names = FALSE)
 
@@ -247,90 +253,156 @@ write.csv(monitoring_summary_by_eco, "monitoring_summary_by_ecoregion.csv", row.
 # 1. Percentage of planted acres monitored by ecoregion
 
 ggplot(monitoring_summary_by_eco, aes(x = reorder(US_L3NAME, total_percent_monitored), y = total_percent_monitored)) +
-  geom_bar(stat = "identity", fill = "royalblue") +
+  geom_bar(stat = "identity", fill = "forestgreen") +
   geom_text(aes(label = comma(round(total_monitored_acres))), 
-            hjust = 2, 
+            hjust = 0.5, 
             color = "black", 
             fontface = "bold", 
             size = 3.5) +
   coord_flip() +
-  labs(title = "Percentage of Postfire Plantations with Survival Surveys by Ecoregion",
-       subtitle = "USFS R5 | Fires 2001-2021 | Net Planting and Survey 2001-2022
-       \nAcres of Survival Survey shown inside bars",
+  labs(title = "Percentage of Postfire Plantations with Stocking Surveys by Ecoregion",
+       subtitle = "USFS R5 | Fires 2001-2021 | Net Planting and Stocking Survey 2001-2022
+       \nAcres of Stocking Survey shown next to bars",
        x = "Ecoregion",
-       y = "Percent Monitored") +
+       y = "Percent with Stocking Surveys") +
   theme_bw(base_size = 10) +
   theme(plot.title.position = "plot",
         plot.title = element_text(size = 12, face = "bold"),
         axis.title = element_text(face = "bold"),
         plot.subtitle = element_text(size = 10),
-        axis.text.y = element_text(size = 9))
+        axis.text.y = element_text(size = 9)) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1),
+                     limits = c(0, 100))
 
-ggsave("percent_monitored_by_ecoregion_with_acres.png", width = 7, height = 3)
+ggsave("percent_stocked_by_ecoregion_with_acres.png", width = 7, height = 4)
 
-# 2. Planted acres with monitoring by ignition year
-monitoring_by_year <- monitoring_in_plantations_eco %>%
-  group_by(Ig_Year) %>%
+
+# Rename longer ecoregion names
+ecoregion_names <- c(
+  "Klamath Mountains/California High North Coast Range" = "Klamath Mountains & North Coast",
+  "Eastern Cascades Slopes and Foothills" = "East Cascades Slopes",
+  "Central California Foothills and Coastal Mountains" = "Central Foothills & Coastal Mountains"
+)
+
+# Update the ecoregion names in the data
+monitoring_summary_by_eco <- monitoring_summary_by_eco %>%
+  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names))
+
+# Identify the two ecoregions with the least monitored acres
+least_monitored <- monitoring_summary_by_eco %>%
+  arrange(total_monitored_acres) %>%
+  slice_head(n = 2) %>%
+  pull(US_L3NAME)
+
+# Prepare the label data
+label_data <- monitoring_summary_by_eco %>%
+  filter(US_L3NAME %in% least_monitored) %>%
+  mutate(label = sprintf("%s planted, %s surveyed", 
+                         scales::comma(round(total_planted_acres)), 
+                         scales::comma(round(total_monitored_acres))))
+
+# Create the plot
+ggplot(monitoring_summary_by_eco, aes(x = reorder(US_L3NAME, total_planted_acres))) +
+  geom_col(aes(y = total_planted_acres, fill = "Initial Planting"), stat = "identity") +
+  geom_bar(aes(y = total_monitored_acres, fill = "Planting + Survey"), stat = "identity") +
+  geom_text(data = label_data, 
+            aes(y = total_planted_acres, label = label),
+            hjust = -0.1, 
+            size = 3.25,
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_manual(values = c("Initial Planting" = "forestgreen", "Planting + Survey" = "skyblue"),
+                    name = "Activity Type") +
+  labs(title = "Postfire Planted Acres with Stocking Survey by Ecoregion",
+       subtitle = "USFS R5 | Fires 2000-2021 | Net Planting and Stocking Survey 2001-2022",
+       x = "Ecoregion",
+       y = "Acres") +
+  theme_bw(base_size = 11) +
+  theme(plot.title.position = "plot",
+        plot.title = element_text(size = 12, face = "bold"),
+        axis.title = element_text(face = "bold"),
+        axis.text = element_text(size = 9),
+        legend.position = "bottom",
+        legend.title = element_text(face = "bold"),
+        legend.text = element_text(size = 10)) +
+  scale_y_continuous(labels = scales::comma_format(),
+                     expand = expansion(mult = c(0, 0.1)))
+
+ggsave("planted_and_surveyed_acres_by_ecoregion.png", width = 7, height = 3)
+
+
+
+
+# Monitored in plantations by year and ecoregion
+
+top5_monitored_list <- monitoring_in_plantations_eco %>%
+  group_by(US_L3NAME) %>%
+  summarize(total_stock_survey = sum(intersecting_acres, na.rm = TRUE)) %>%
+  arrange(desc(total_stock_survey)) %>%
+  slice_head(n = 5) %>%
+  pull(US_L3NAME)
+
+# Now, let's prepare the data for these top 6 ecoregions
+top5_monitored <- monitoring_in_plantations_eco %>%
+  filter(US_L3NAME %in% top5_monitored_list) %>%
+  group_by(US_L3NAME, Ig_Year) %>%
   summarize(
     total_planted = sum(net_total_planted, na.rm = TRUE),
-    total_monitored = sum(intersecting_acres, na.rm = TRUE)
-  )
-
-ggplot(monitoring_by_year, aes(x = Ig_Year)) +
-  geom_col(aes(y = total_planted, fill = "Planted")) +
-  geom_col(aes(y = total_monitored, fill = "Monitored")) +
-  scale_fill_manual(values = c("Planted" = "forestgreen", "Monitored" = "seagreen1")) +
-  labs(title = "Planted and Monitored Acres by Ignition Year",
-       x = "Ignition Year",
-       y = "Acres",
-       fill = "Type") +
-  theme_minimal()
-
-ggsave("planted_monitored_acres_by_year.png", width = 10, height = 6)
-
-
-library(ggplot2)
-library(dplyr)
-library(scales)
-
-# Modify the data preparation to include reburns
-monitoring_by_year_reburns <- monitoring_in_plantations_eco %>%
-  group_by(Ig_Year, reburns) %>%
-  summarize(
-    total_planted = sum(net_total_planted, na.rm = TRUE),
-    total_monitored = sum(intersecting_acres, na.rm = TRUE),
+    total_stock_survey = sum(intersecting_acres, na.rm = TRUE),
     .groups = "drop"
-  ) %>%
-  # Convert reburns to a factor for better labeling
-  mutate(reburn_factor = factor(reburns, levels = 0:max(reburns), 
-                                labels = c("No Reburn", paste(1:max(reburns), "Reburn(s)"))))
+  )
 
 # Create the faceted plot
-ggplot(monitoring_by_year_reburns, aes(x = Ig_Year)) +
-  geom_col(aes(y = total_planted, fill = "Planted"), alpha = 0.7) +
-  geom_col(aes(y = total_monitored, fill = "Monitored")) +
-  facet_wrap(~ reburn_factor, scales = "free_y", ncol = 2) +
-  scale_fill_manual(values = c("Planted" = "forestgreen", "Monitored" = "seagreen1")) +
-  scale_x_continuous(breaks = seq(2000, 2021, by = 4)) +
-  scale_y_continuous(labels = comma_format()) +
-  labs(title = "Planted and Monitored Acres by Ignition Year and Reburns",
-       subtitle = "USFS Region 5, 2000-2021",
+ggplot(top5_monitored, aes(x = Ig_Year)) +
+  geom_col(aes(y = total_planted, fill = "Net Planted"), alpha = 0.7, color = "black", size = 0.1) +
+  geom_col(aes(y = total_stock_survey, fill = "Planted + Surveyed"), alpha = 0.7, color = "black", size = 0.1) +
+  scale_fill_manual(values = c("Net Planted" = "forestgreen", "Planted + Surveyed" = "seagreen1"), name = "Acres") +
+  facet_wrap(~ US_L3NAME, scales = "free", ncol = 2) +
+  labs(title = "Postfire Planted and Surveyed Acres by Ignition Year and Ecoregions",
+       subtitle = "USFS R5 | Fires 2000-2021 | Net Planting and Stocking Survey 2001-2022",
        x = "Ignition Year",
-       y = "Acres",
-       fill = "Type") +
+       y = "Acres") +
   theme_bw(base_size = 11) +
-  theme(
-    legend.position = "bottom",
-    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
-    axis.text.y = element_text(size = 9),
-    axis.title = element_text(face = "bold", size = 10),
-    plot.title = element_text(face = "bold", size = 12),
-    plot.subtitle = element_text(size = 10),
-    strip.text = element_text(face = "bold", size = 10),
-    panel.spacing = unit(1, "lines")
-  )
+  theme(legend.position = "bottom",
+        legend.title = element_text(face = "bold"),
+        legend.text = element_text(size = 9),
+        plot.title = element_text(size = 12, face = "bold"),
+        axis.title = element_text(face = "bold"),
+        plot.subtitle = element_text(size = 10),
+        strip.background = element_rect(fill = "lightgray"),
+        strip.text = element_text(face = "bold"),
+        axis.text.x = element_text(size = 9, hjust = 1)) +
+  scale_x_continuous(breaks = seq(2000, 2021, by = 5)) +
+  scale_y_continuous(labels = scales::comma_format())
 
-ggsave("planted_monitored_acres_by_year_and_reburns.png", width = 12, height = 8)
+ggsave("top6_monitored_ecoregions_by_year.png", width = 12, height = 8)
+ggsave("planted_stock_survey_acres_by_year.png", width = 7, height = 6)
+
+
+
+ggplot(monitoring_summary_by_eco, aes(x = avg_mean_diff, y = total_percent_monitored)) +
+  geom_point(aes(size = total_planted_acres), alpha = 0.7, color = "forestgreen") +
+  geom_text(aes(label = US_L3NAME), check_overlap = TRUE, vjust = -1, size = 3) +
+  geom_smooth(method = "lm", color = "blue", se = FALSE, linetype = "dashed") +
+  labs(title = "Percentage of Plantations with Stocking Surveys vs. Average Time Since Planting",
+       subtitle = "USFS R5 | Fires 2001-2021 | Net Planting and Stocking Survey 2001-2022",
+       x = "Average Years Between Planting and Survey",
+       y = "Percent of Planted Area Surveyed",
+       size = "Total Planted Acres") +
+  theme_bw(base_size = 10) +
+  theme(plot.title.position = "plot",
+        plot.title = element_text(size = 12, face = "bold"),
+        axis.title = element_text(face = "bold"),
+        plot.subtitle = element_text(size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(face = "bold")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1),
+                     limits = c(0, 100)) +
+  scale_size_continuous(labels = scales::comma_format()) +
+  expand_limits(x = 0)
+
+ggsave("percent_surveyed_vs_time_since_planting.png", width = 10, height = 7)
+
 
 
 
@@ -377,99 +449,133 @@ ggplot(monitoring_by_productivity, aes(x = productivity_group)) +
     plot.title = element_text(face = "bold", size = 12),
     plot.subtitle = element_text(size = 10),
     panel.grid.minor = element_blank()
-  ) +
-  # guides(fill = guide_legend(reverse = TRUE)) +
-  coord_flip()
+  )
+  # guides(fill = guide_legend(reverse = TRUE)) 
 
 ggsave("planted_monitored_acres_by_productivity.png", width = 7, height = 3.5)
 
 
 
-# 3. Relationship between monitoring percentage and mean years since fire
-ggplot(monitoring_summary_by_eco, aes(x = avg_mean_diff, y = total_monitored_acres, size = total_fires)) +
-  geom_point(alpha = 0.7) +
-  scale_size_continuous(range = c(3, 10)) +
-  scale_color_viridis(discrete = TRUE) +
-  labs(title = "Monitoring Acres vs. Mean Years Since Fire",
-       x = "Mean Years Between Fire and Monitoring",
-       y = "Total Planted Acres with Stocking Survey",
-       size = "Total Fires",
-       color = "Ecoregion") +
-  theme_minimal()
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(patchwork)
 
-ggsave("monitoring_vs_years_since_fire.png", width = 10, height = 8)
+# Prepare the data
+treatments_by_productivity <- activities_in_plantations_eco %>%
+  mutate(productivity_group = cut(mean_productivity, 
+                                  breaks = seq(0, ceiling(max(mean_productivity)), by = 1),
+                                  labels = seq(1, ceiling(max(mean_productivity))),
+                                  include.lowest = TRUE)) %>%
+  filter(type_labels %in% c("Site Prep - Non-Chemical", "Release - Non-Chemical", 
+                            "Survival Survey", "Stocking Survey")) %>%
+  group_by(type_labels, productivity_group) %>%
+  summarize(
+    total_planted = sum(net_total_planted, na.rm = TRUE),
+    total_treated = sum(intersecting_acres, na.rm = TRUE),
+    percent_treated = (total_treated / total_planted) * 100,
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(productivity_group))  # Remove any NA groups
 
-# 4. Average number of monitoring activities by ecoregion
-ggplot(monitoring_summary_by_eco, aes(x = reorder(US_L3NAME, avg_n_monitoring), y = avg_n_monitoring)) +
-  geom_bar(stat = "identity", fill = "darkgreen") +
-  coord_flip() +
-  labs(title = "Average Number of Monitoring Activities by Ecoregion",
-       x = "Ecoregion",
-       y = "Average Number of Monitoring Activities") +
-  theme_minimal()
-
-ggsave("avg_monitoring_activities_by_ecoregion.png", width = 10, height = 8)
+# Set the order of treatment types
+treatment_order <- c("Site Prep - Non-Chemical", "Release - Non-Chemical", 
+                     "Survival Survey", "Stocking Survey")
+treatments_by_productivity$type_labels <- factor(treatments_by_productivity$type_labels, 
+                                                 levels = treatment_order)
 
 library(dplyr)
 library(ggplot2)
+library(scales)
 library(viridis)
 
-# Assuming monitoring_in_plantations_eco is already loaded
+# Assuming treatments_by_productivity data is already prepared
 
-# 1. Percentage of planted acres monitored over time by ecoregion
-monitoring_by_year_eco <- monitoring_in_plantations_eco %>%
-  group_by(Ig_Year, US_L3NAME) %>%
-  summarize(
-    total_planted = sum(net_total_planted, na.rm = TRUE),
-    total_monitored = sum(intersecting_acres, na.rm = TRUE),
-    percent_monitored = (total_monitored / total_planted) * 100
-  ) %>%
-  ungroup()
-
-ggplot(monitoring_by_year_eco, aes(x = Ig_Year, y = percent_monitored, color = US_L3NAME)) +
-  geom_line(size = 1) +
-  geom_point(size = 2) +
-  scale_color_viridis(discrete = TRUE, option = "plasma") +
-  labs(title = "Percentage of Planted Acres Monitored Over Time by Ecoregion",
-       subtitle = "USFS Region 5, 2000-2021",
-       x = "Ignition Year",
-       y = "Percentage Monitored",
-       color = "Ecoregion") +
+# Create the plot
+treatments_productivity_plot <- ggplot(treatments_by_productivity %>% filter(total_treated > 0), aes(x = productivity_group, fill = type_labels)) +
+  geom_col(aes(y = total_treated), 
+           color = "black", size = 0.1, position = "dodge") + 
+  geom_text(aes(y = total_treated, 
+                label = sprintf("%.1f%%", percent_treated),
+                vjust = ifelse(total_treated < 2000, -0.5, 1.5)),
+            position = position_dodge(width = 0.9),
+            size = 3, color = "black", fontface = "bold") +
+  scale_fill_viridis_d(option = "plasma", begin = 0.5, end = 0.9) +
+  scale_y_continuous(labels = comma_format()) +
+  facet_wrap(~ type_labels, scales = "free", ncol = 2) +
+  labs(title = "Treatments & Monitoring in Postfire Plantations By Productivity Class",
+       subtitle = "USFS Region 5 | Fires 2000-2021 | Activities 2001-2022\n
+       % = proportion of net planted area overlapped by activity",
+       x = "Productivity Class",
+       y = "Net Acres",
+       fill = "Treatment Type") +
   theme_bw(base_size = 11) +
   theme(
-    legend.position = "right",
+    legend.position = "none",
+    legend.text = element_text(size = 9),
+    legend.title = element_text(face = "bold", size = 9),
     axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
     axis.text.y = element_text(size = 9),
     axis.title = element_text(face = "bold", size = 10),
     plot.title = element_text(face = "bold", size = 12),
     plot.subtitle = element_text(size = 10),
-    legend.title = element_text(face = "bold", size = 10),
-    legend.text = element_text(size = 9)
-  ) +
-  scale_x_continuous(breaks = seq(2000, 2021, by = 4)) +
-  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
 
-ggsave("percent_monitored_over_time_by_ecoregion.png", width = 10, height = 6)
+print(treatments_productivity_plot)
 
-# 2. Boxplot of percentage monitored by ecoregion
-ggplot(monitoring_in_plantations_eco, aes(x = reorder(US_L3NAME, percent_total_planted, FUN = median), y = percent_total_planted)) +
-  geom_boxplot(fill = "steelblue", alpha = 0.7) +
-  coord_flip() +
-  labs(title = "Distribution of Percentage Monitored by Ecoregion",
-       subtitle = "USFS Region 5, 2000-2021",
-       x = "Ecoregion",
-       y = "Percentage Monitored") +
-  theme_bw(base_size = 11) +
-  theme(
-    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
-    axis.text.y = element_text(size = 9),
-    axis.title = element_text(face = "bold", size = 10),
-    plot.title = element_text(face = "bold", size = 12),
-    plot.subtitle = element_text(size = 10)
-  ) +
-  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))
+# Save the plot
+ggsave("planted_treated_acres_by_productivity_faceted.png", 
+       treatments_productivity_plot, width = 7, height = 4)
 
-ggsave("percent_monitored_distribution_by_ecoregion.png", width = 10, height = 6)
+
+
+# Create individual plots for each treatment type
+individual_plots <- treatment_order %>%
+  map(function(treatment) {
+    data <- treatments_by_productivity %>% filter(type_labels == treatment)
+    
+    ggplot(data, aes(x = productivity_group)) +
+      geom_col(aes(y = total_planted, fill = "Initial Planting"), 
+               color = "black", size = 0.1, alpha = 0.7) +
+      geom_col(aes(y = total_treated, fill = treatment), 
+               color = "black", size = 0.1) + 
+      scale_fill_manual(values = c("Initial Planting" = "forestgreen", 
+                                   "Site Prep - Non-Chemical" = "goldenrod",
+                                   "Release - Non-Chemical" = "steelblue",
+                                   "Survival Survey" = "coral",
+                                   "Stocking Survey" = "purple")) +
+      scale_y_continuous(labels = comma_format()) +
+      labs(title = paste("Postfire Planting &", treatment, "Area"),
+           subtitle = "USFS Region 5 | Fires 2000-2021 | Activities 2001-2022",
+           x = "Productivity Class",
+           y = "Net Acres",
+           fill = "Activity Type") +
+      theme_bw(base_size = 11) +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 9),
+        legend.title = element_text(face = "bold", size = 9),
+        axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
+        axis.text.y = element_text(size = 9),
+        axis.title = element_text(face = "bold", size = 10),
+        plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        panel.grid.minor = element_blank()
+      )
+  })
+
+# Combine individual plots
+combined_plot <- wrap_plots(individual_plots, ncol = 2)
+
+# Save the combined plot
+ggsave("planted_treated_acres_by_productivity_individual.png", combined_plot, width = 14, height = 12)
+
+library(dplyr)
+library(ggplot2)
+library(viridis)
+
 
 # 3. Heatmap of percentage monitored by ecoregion and time
 ggplot(monitoring_by_year_eco, aes(x = Ig_Year, y = US_L3NAME, fill = percent_monitored)) +
@@ -493,27 +599,6 @@ ggplot(monitoring_by_year_eco, aes(x = Ig_Year, y = US_L3NAME, fill = percent_mo
 
 ggsave("percent_monitored_heatmap_by_ecoregion_and_year.png", width = 12, height = 8)
 
-# 4. Scatter plot of percentage monitored vs. total planted acres by ecoregion
-ggplot(monitoring_in_plantations_eco, aes(x = net_total_planted, y = percent_total_planted, color = US_L3NAME)) +
-  geom_point(alpha = 0.7, size = 3) +
-  scale_color_viridis(discrete = TRUE, option = "plasma") +
-  scale_x_log10(labels = scales::comma_format(big.mark = ",")) +
-  labs(title = "Percentage Monitored vs. Total Planted Acres by Ecoregion",
-       subtitle = "USFS Region 5, 2000-2021",
-       x = "Total Planted Acres (log scale)",
-       y = "Percentage Monitored",
-       color = "Ecoregion") +
-  theme_bw(base_size = 11) +
-  theme(
-    legend.position = "right",
-    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
-    axis.text.y = element_text(size = 9),
-    axis.title = element_text(face = "bold", size = 10),
-    plot.title = element_text(face = "bold", size = 12),
-    plot.subtitle = element_text(size = 10),
-    legend.title = element_text(face = "bold", size = 10),
-    legend.text = element_text(size = 9)
-  ) +
-  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))
 
-ggsave("percent_monitored_vs_planted_acres_by_ecoregion.png", width = 10, height = 6)
+
+
