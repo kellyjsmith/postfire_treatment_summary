@@ -22,6 +22,7 @@ prepare_net_activities <- function(activities) {
               min_prod = min(as.numeric(PRODUCTIVI), na.rm = TRUE),
               mean_prod = mean(as.numeric(PRODUCTIVI), na.rm = TRUE),
               max_prod = max(as.numeric(PRODUCTIVI), na.rm = TRUE)) %>%
+              
     ungroup() %>%
     mutate(net_acres = as.numeric(st_area(geometry))/4046.86)
 }
@@ -29,7 +30,7 @@ prepare_net_activities <- function(activities) {
 net_activities <- prepare_net_activities(processed_activities)
 
 saveRDS(net_activities, "net_activities.RDS")
-
+net_activities <- readRDS("net_activities.RDS")
 
 
 # Prepare total burned areas data
@@ -56,7 +57,7 @@ total_treated_fire_eco <- treated_fires_eco %>%
             .groups = "drop") %>%
   st_drop_geometry()
 
-burned_areas <- prepare_burned_areas(treated_fires)
+burned_areas <- prepare_burned_areas(fire_events)
 
 fires_with_activity <- unique(processed_activities$fire_id)
 

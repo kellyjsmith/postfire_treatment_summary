@@ -278,7 +278,7 @@ boxplot_years_since_fire <- function(data) {
   ggplot(plot_data, aes(x = fct_rev(type_labels), y = diff_years, fill = type_labels)) +
     geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
     coord_flip() +
-    scale_fill_brewer(palette = "Set1") +
+    scale_fill_viridis_d(option = "plasma") +
     labs(title = "Distribution of Years Between Fire and Treatment",
          subtitle = "USFS R5 | Fires, 2000-2021 | Activities 2001-2022",
          x = "Treatment Type",

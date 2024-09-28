@@ -384,7 +384,7 @@ write.csv(severity_by_fire, "severity_by_fire.csv")
 # Assuming assigned_activities is already loaded
 
 # Step 1: Identify all initial planting activities before filtering
-all_plantings <- facts_fires$assigned_activities %>%
+all_plantings <- facts_fires$process %>%
   filter(ACTIVITY == "Plant Trees")
 
 # Step 2: Identify plantings that intersect multiple fires
@@ -489,3 +489,121 @@ print(reburn_summary)
 
 # Optionally, save the reburn summary to a CSV file
 write.csv(reburn_summary, "filtered_planting_reburn_summary.csv", row.names = FALSE)
+
+
+
+
+
+# Update net_activities with reburn information and intersect with ecoregions
+total_net_activities_summary <- processed_activities %>%
+  st_collection_extract("POLYGON") %>%
+  st_transform(3310) %>%
+  mutate(activity_area = st_area(.)) %>%
+  group_by(fire_id, ACTIVITY) %>%
+  mutate(
+    gross_acres = sum(as.numeric(activity_area)) / 4046.86,
+  ) %>%
+  ungroup() %>%
+  st_intersection(cal_eco3 %>% select(US_L3NAME)) %>%
+  group_by(US_L3NAME, type_labels, ACTIVITY) %>%
+  summarize(
+    geometry = st_union(geometry),
+    n_records = n(),
+    net_acres = sum(as.numeric(st_area(geometry))) / 4046.86,
+    gross_acres = sum(gross_acres),
+    mean_reburns = mean(reburns, na.rm = TRUE),
+    min_reburns = min(reburns, na.rm = TRUE),
+    max_reburns = max(reburns, na.rm = TRUE),
+    mean_diff = mean(diff_years, na.rm = TRUE),
+    min_diff = min(diff_years, na.rm = TRUE),
+    max_diff = max(diff_years, na.rm = TRUE),
+    mean_prod = mean(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    min_prod = min(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    max_prod = max(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    .groups = "drop"
+  ) %>% st_drop_geometry()
+
+
+library(dplyr)
+
+# Function to calculate high severity and total acres for an activity
+calculate_acres <- function(data, activity_label) {
+  data %>%
+    filter(Category == "All Activities", 
+           type_labels == activity_label) %>%
+    group_by(Category, type_labels) %>% 
+    summarize(
+      moderate_severity_acres = sum(Moderate_acres, na.rm = TRUE),
+      high_severity_acres = sum(High_acres, na.rm = TRUE),
+      total_acres = sum(Total_acres, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(Activity = activity_label)
+}
+
+# Calculate acres for each activity
+initial_planting <- calculate_acres(severity_summary, "Initial Planting")
+fill_in_replant <- calculate_acres(severity_summary, "Fill-in or Replant")
+certification_plant <- calculate_acres(severity_summary, "Certification - Plant")
+release_nonchemical <- calculate_acres(severity_summary, "Release - Non-Chemical")
+release_chemical <- calculate_acres(severity_summary, "Release - Chemical")
+siteprep_nonchemical <- calculate_acres(severity_summary, "Site Prep - Non-Chemical")
+siteprep_chemical <- calculate_acres(severity_summary, "Site Prep - Chemical")
+reforest_need_fire <- calculate_acres(severity_summary, "Reforest. Need - Fire")
+harvest_salvage <- calculate_acres(severity_summary, "Harvest - Salvage")
+harvest_nonsalvage <- calculate_acres(severity_summary, "Harvest - Non-Salvage")
+thinning <- calculate_acres(severity_summary, "TSI - Thin")
+
+# Calculate total burned acres
+total_burned <- severity_summary %>%
+  filter(Category == "Total Burned") %>%
+  group_by(Category) %>% 
+  summarize(
+    moderate_severity_acres = sum(Moderate_acres, na.rm = TRUE),
+    high_severity_acres = sum(High_acres, na.rm = TRUE),
+    total_acres = sum(Total_acres, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(Activity = "Total Burned")
+
+# Combine all results
+activity_summary <- bind_rows(
+  initial_planting,
+  fill_in_replant,
+  certification_plant,
+  release_nonchemical,
+  release_chemical,
+  siteprep_nonchemical,
+  siteprep_chemical,
+  reforest_need_fire,
+  harvest_salvage,
+  harvest_nonsalvage,
+  thinning,
+  total_burned
+)
+
+# Calculate total high severity burned acres
+total_high_severity_burned <- total_burned$high_severity_acres
+total_moderate_severity_burned <- total_burned$moderate_severity_acres
+
+# Calculate percentages and round the numbers
+activity_summary <- activity_summary %>%
+  mutate(
+    moderate_severity_acres = round(moderate_severity_acres),
+    high_severity_acres = round(high_severity_acres, 2),
+    total_acres = round(total_acres, 2),
+    percent_high_severity = round(high_severity_acres / total_acres * 100, 2),
+    percent_of_total_high_severity = round(high_severity_acres / total_high_severity_burned * 100, 2),
+    percent_moderate_severity = round(moderate_severity_acres / total_acres * 100, 2),
+    percent_of_total_moderate_severity = round(moderate_severity_acres / total_moderate_severity_burned * 100, 2)
+  ) %>%
+  select(Activity, total_acres, moderate_severity_acres, high_severity_acres, percent_moderate_severity, 
+         percent_of_total_moderate_severity, percent_high_severity, percent_of_total_high_severity)
+
+# Rename columns for clarity
+colnames(activity_summary) <- c("Activity", "Total Acres", "Moderate Acres", "High Severity Acres", 
+                                "% Moderate Severity", "% of Total Moderate Burned", 
+                                "% High Severity", "% of Total High Burned")
+
+# Print the summary
+print(activity_summary)

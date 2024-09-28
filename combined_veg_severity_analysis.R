@@ -47,6 +47,18 @@ saveRDS(planted_net_activities_eco, "planted_net_activities_eco_with_reburns.RDS
 
 planted_net_activities_eco <- readRDS("planted_net_activities_eco_with_reburns.RDS")
 
+
+reburn_summary <- processed_activities %>%
+  filter(type_labels == "Initial Planting") %>% 
+  summarize(
+    total_planted_acres = sum(activity_fire_area)/4046.86,
+    reburned_acres = sum(activity_fire_area[reburns > 0]/4046.86),
+    percent_reburned = (reburned_acres / total_planted_acres) * 100
+  )
+
+print(reburn_summary)
+
+
 # Function to crop & mask the net postfire activities with severity and veg rasters
 summarize_planted_veg_severity_eco <- function(areas, evt_raster_file, evt_csv_file, severity_folder) {
   
@@ -148,6 +160,24 @@ saveRDS(planted_veg_severity_eco, "planted_veg_severity_eco_summary_with_reburns
 st_write(planted_veg_severity_eco, "planted_veg_severity_eco_summary_with_reburns.shp", append = FALSE)
 write.csv(planted_veg_severity_eco %>% st_drop_geometry(), "planted_veg_severity_eco_summary_with_reburns.csv", row.names = FALSE)
 
+
+
+# Calculate reforestation success score by fire, severity class, and ecoregion
+reforestation_success_eco <- planted_veg_severity_eco %>%
+  group_by(fire_id, US_L3NAME, Ig_Year, Severity_Class) %>%
+  summarize(
+    Total_Acres = sum(Acres),
+    Conifer_Acres = sum(Acres[Veg_Type == "Conifer"]),
+    Shrub_Acres = sum(Acres[Veg_Type == "Shrubland"]),
+    Conifer_Percent = Conifer_Acres / Total_Acres * 100,
+    Conifer_Shrub_Ratio = Conifer_Acres / (Shrub_Acres + 0.1),
+    Success_Score = (Conifer_Percent + (Conifer_Shrub_Ratio / (1 + Conifer_Shrub_Ratio)) * 100) / 2,
+    .groups = "drop"
+  )
+
+
+
+
 # Calculate areas and percentages by vegetation type, severity class, and ecoregion
 planted_veg_severity_eco_summary <- planted_veg_severity_eco %>%
   st_drop_geometry() %>%
@@ -162,6 +192,11 @@ planted_veg_severity_eco_summary <- planted_veg_severity_eco %>%
     Percentage = Area / Total_Area * 100
   ) %>%
   ungroup()
+
+
+
+
+
 
 # Rename longer ecoregion names
 ecoregion_names <- c(
@@ -267,5 +302,118 @@ print(planted_veg_severity_plot)
 # Save the plot
 ggsave("planted_veg_severity_distribution_ecoregions.png", planted_veg_severity_plot, width = 7, height = 5, dpi = 300)
 
+
+
+library(ggplot2)
+library(dplyr)
+library(forcats)
+library(scales)
+library(stringr)
+
+# Prepare the data
+planting_summary_severity <- planted_veg_severity_eco %>%
+  group_by(US_L3NAME, Ig_Year, Severity_Class) %>%
+  summarize(Net_Planted_Acres = sum(Acres, na.rm = TRUE), .groups = "drop") %>%
+  filter(Severity_Class != "Non-Processing Area")
+
+# Set factor levels for severity
+severity_order <- c("Increased Greenness", "Unburned to Low", "Low", "Moderate", "High")
+planting_summary_severity$Severity_Class <- factor(planting_summary_severity$Severity_Class, levels = severity_order)
+
+# Define severity colors
+severity_colors <- c(
+  "Unburned to Low" = "darkgreen",
+  "Low" = "skyblue",
+  "Moderate" = "yellow",
+  "High" = "red"
+)
+
+# Rename longer ecoregion names
+ecoregion_names <- c(
+  "Klamath Mountains/California High North Coast Range" = "Klamath Mountains & North Coast",
+  "Eastern Cascades Slopes and Foothills" = "East Cascades Slopes",
+  "Central California Foothills and Coastal Mountains" = "Central Foothills & Coastal Mountains"
+)
+
+planting_summary_severity <- planting_summary_severity %>%
+  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names))
+
+# Calculate total acres planted for each ecoregion
+total_eco_acres <- planting_summary_severity %>%
+  st_drop_geometry() %>% 
+  group_by(US_L3NAME) %>%
+  summarize(Total_Acres = sum(Net_Planted_Acres, na.rm = TRUE)) %>%
+  arrange(desc(Total_Acres))
+
+# Select top 5 ecoregions
+top_5_ecoregions <- total_eco_acres %>%
+  top_n(5, Total_Acres) %>%
+  pull(US_L3NAME)
+
+# Filter data for top 5 ecoregions
+planting_summary_severity <- planting_summary_severity %>%
+  filter(US_L3NAME %in% top_5_ecoregions)
+
+# Create ordered factor for ecoregions
+ecoregion_order <- total_eco_acres$US_L3NAME[total_eco_acres$US_L3NAME %in% top_5_ecoregions]
+
+# Add total acres to ecoregion names with proper comma formatting and order
+planting_summary_severity <- planting_summary_severity %>%
+  left_join(total_eco_acres, by = "US_L3NAME") %>%
+  mutate(US_L3NAME = paste0(US_L3NAME, "\n(", scales::comma(round(Total_Acres)), " total acres)"),
+         US_L3NAME = factor(US_L3NAME, levels = paste0(ecoregion_order, "\n(", scales::comma(round(total_eco_acres$Total_Acres[total_eco_acres$US_L3NAME %in% top_5_ecoregions])), " total acres)")))
+
+# Create the plot
+ggplot(planting_summary_severity, aes(x = fct_rev(US_L3NAME), y = Net_Planted_Acres, fill = Severity_Class)) +
+  geom_col(position = "stack") +
+  scale_fill_manual(values = severity_colors, name = "Burn Severity") +
+  scale_y_continuous(labels = scales::comma_format(), expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "Net Planted Acres by Ecoregion and Burn Severity",
+       subtitle = "USFS Region 5, 2000-2021",
+       x = "Ecoregion",
+       y = "Net Planted Acres") +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position = c(0.8, 0.2),
+    legend.justification = c("right", "bottom"),
+    legend.box.just = "right",
+    legend.margin = margin(6, 6, 6, 6),
+    legend.background = element_rect(fill = "white", color = NA),
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 9),
+    axis.text.y = element_text(size = 9),
+    axis.title = element_text(face = "bold", size = 10),
+    plot.title = element_text(face = "bold", size = 12),
+    plot.subtitle = element_text(size = 11),
+    legend.title = element_text(face = "bold", size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
+  coord_flip()
+
+ggsave("net_planting_by_severity_ecoregion_top5.png", width = 7, height = 5, dpi = 300)
+
+
 # Save the table
 write.csv(planted_severity_eco_table, "planted_severity_eco_table.csv", row.names = FALSE)
+
+
+
+library(dplyr)
+
+# Calculate total planted acres and reburned acres
+reburn_summary <- planted_veg_severity_eco %>%
+  group_by(fire_id) %>%
+  summarize(
+    total_planted_acres = sum(Acres),
+    reburned_acres = sum(Acres[max_reburns > 0]),
+    high_severity_reburned_acres = sum(Acres[max_reburns > 0 & Severity_Class == "High"])
+  ) %>%
+  summarize(
+    total_planted_acres = sum(total_planted_acres),
+    total_reburned_acres = sum(reburned_acres),
+    total_high_severity_reburned_acres = sum(high_severity_reburned_acres),
+    percent_reburned = (total_reburned_acres / total_planted_acres) * 100,
+    percent_high_severity_reburned = (total_high_severity_reburned_acres / total_planted_acres) * 100
+  )
+
+print(reburn_summary)

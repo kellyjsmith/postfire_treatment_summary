@@ -26,8 +26,13 @@ reforestation_success_eco <- planted_veg_severity_eco %>%
     Conifer_Percent = Conifer_Acres / Total_Acres * 100,
     Conifer_Shrub_Ratio = Conifer_Acres / (Shrub_Acres + 0.1),
     Success_Score = (Conifer_Percent + (Conifer_Shrub_Ratio / (1 + Conifer_Shrub_Ratio)) * 100) / 2,
+    Mean_Reburns = mean(mean_reburns),
     .groups = "drop"
   )
+
+# Save the results
+saveRDS(reforestation_success_eco, "reforestation_success_eco_with_reburns.RDS")
+write.csv(reforestation_success_eco, "reforestation_success_eco_with_reburns.csv", row.names = FALSE)
 
 
 reforestation_success_SUID <- planted_veg_severity_eco_SUID %>%
@@ -42,7 +47,7 @@ reforestation_success_SUID <- planted_veg_severity_eco_SUID %>%
     .groups = "drop"
   )
 
-refor_success_year_summary <- reforestation_success_eco %>% 
+refor_success_year_summary <- reforestation_success_eco_SUID %>% 
   group_by(US_L3NAME, Ig_Year) %>% 
   summarize(
     Mean_Success_Score = mean(Success_Score, na.rm = TRUE),
@@ -300,29 +305,51 @@ bar_plot <- reforestation_success_eco_summary %>%
 print(bar_plot)
 
 
-library(ggplot2)
-library(dplyr)
-library(scales)
-library(stringr)
 
-# Define ecoregion name replacements
-ecoregion_names <- c(
-  "Klamath Mountains/California High North Coast Range" = "Klamath Mtns & North Coast",
-  "Eastern Cascades Slopes and Foothills" = "East Cascades Slopes",
-  "Central California Foothills and Coastal Mountains" = "Central Foothills & Coastal Mountains",
-  "Southern California Mountains" = "Southern California Mtns"
-)
+# Define severity order and colors
+severity_levels <- c("High", "Moderate", "Low", "Unburned to Low")
+severity_colors <- c("High" = "red", "Moderate" = "yellow2", "Low" = "skyblue", "Unburned to Low" = "green")
 
-# Calculate total planted acres for each ecoregion
-ecoregion_totals <- reforestation_success_eco %>%
-  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names)) %>% 
-  group_by(US_L3NAME) %>%
-  summarize(Total_Planted_Acres = sum(Total_Acres))
+# Prepare data for bar plot
+bar_plot_data <- reforestation_success_eco_summary %>%
+  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names)) %>%
+  filter(US_L3NAME %in% top_ecoregions,
+         Severity_Class %in% severity_levels) %>%
+  mutate(Severity_Class = factor(Severity_Class, levels = severity_levels))
 
-# Get top 5 ecoregions
-top_ecoregions <- ecoregion_totals %>%
-  top_n(5, Total_Planted_Acres) %>%
-  pull(US_L3NAME)
+# Calculate total planted acres for each ecoregion and severity class
+planted_acres <- bar_plot_data %>%
+  group_by(US_L3NAME, Severity_Class) %>%
+  summarize(Total_Acres = sum(Total_Acres, na.rm = TRUE), .groups = "drop")
+
+# Bar plot
+success_bar_plot <- ggplot(bar_plot_data, 
+                           aes(x = Severity_Class, y = Mean_Success_Score, fill = Severity_Class)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = planted_acres, 
+            aes(y = 5, label = scales::comma(round(Total_Acres))),
+            color = "black", size = 3.5, hjust = 0, fontface = "bold") +
+  facet_wrap(~ US_L3NAME, scales = "free_x", ncol = 3) +
+  coord_flip() +
+  scale_fill_manual(values = severity_colors) +
+  labs(title = "Mean Reforestation Success Score by Burn Severity and Ecoregion",
+       subtitle = "Net Planted Acres by Fire | R5 Fires 2000-2021",
+       x = "Burn Severity Class", 
+       y = "Mean Reforestation Success Score") +
+  theme_bw(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 12),
+    plot.title.position = "plot",
+    plot.subtitle = element_text(size = 10),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none"
+  )
+
+print(success_bar_plot)
+
+ggsave("reforestation_success_by_severity_barplot.png", success_bar_plot, width = 7, height = 4, dpi = 300)
 
 # Create boxplot
 success_boxplot <- reforestation_success_eco_summary %>%
@@ -368,7 +395,69 @@ success_bar_plot <- ggplot(bar_plot_data,
   coord_flip() +
   scale_fill_viridis(discrete = TRUE, end = 0.9, option = "D") +
   labs(title = "Mean Reforestation Success Score by Burn Severity and Ecoregion",
-       subtitle = "Top 5 Ecoregions by Total Planted Acres | R5 Fires 2000-2021",
+       subtitle = "Net Planted Acres by Fire | R5 Fires 2000-2021",
+       x = "Burn Severity Class", 
+       y = "Mean Reforestation Success Score") +
+  theme_bw(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 12),
+    plot.title.position = "plot",
+    plot.subtitle = element_text(size = 10),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none"
+  )
+
+print(success_bar_plot)
+
+
+
+# Create boxplot
+success_boxplot <- reforestation_success_eco_summary %>%
+  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names)) %>%
+  filter(US_L3NAME %in% top_ecoregions) %>%
+  ggplot(aes(x = reorder(US_L3NAME, Total_Acres), y = Success_Score)) +
+  geom_boxplot(fill = "forestgreen", color = "black") +
+  coord_flip() +
+  labs(title = "Postfire Reforestation Success in Planted Areas by Ecoregion | R5 Fires 2000-2021",
+       subtitle = "Success Score: 0-100 scale combining conifer percentage and conifer-to-shrub ratio",
+       x = "Ecoregion",
+       y = "Reforestation Success Score") +
+  theme_bw(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12),
+    plot.title.position = "plot",
+    plot.subtitle = element_text(size = 10),
+    axis.title = element_text(face = "bold"),
+    axis.text.y = element_text(size = 9)
+  ) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20)) +
+  scale_x_discrete(labels = function(x) paste0(x, "\n(", comma(
+    ecoregion_totals$Total_Planted_Acres[match(x, ecoregion_totals$US_L3NAME)]), " planting acres)"))
+
+print(success_boxplot)
+ggsave("reforestation_success_by_ecoregion_boxplot.png", success_boxplot, width = 7, height = 3, dpi = 300)
+
+# Define severity order
+severity_levels <- c("High","Moderate","Low","Unburned to Low")
+
+# Prepare data for bar plot
+bar_plot_data <- reforestation_success_eco_summary %>%
+  mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names)) %>%
+  filter(US_L3NAME %in% top_ecoregions,
+         Severity_Class %in% severity_levels) %>%
+  mutate(Severity_Class = factor(Severity_Class, levels = severity_levels))
+
+# Bar plot
+success_bar_plot <- ggplot(bar_plot_data, 
+                           aes(x = Severity_Class, y = Mean_Success_Score, fill = Severity_Class)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ US_L3NAME, scales = "free_x", ncol = 3) +
+  coord_flip() +
+  scale_fill_viridis(discrete = TRUE, end = 0.9, option = "D") +
+  labs(title = "Mean Reforestation Success Score by Burn Severity and Ecoregion",
+       subtitle = "Net Planted Acres by Fire | R5 Fires 2000-2021",
        x = "Burn Severity Class", 
        y = "Mean Reforestation Success Score") +
   theme_bw(base_size = 11) +
@@ -447,3 +536,7 @@ time_series_plot <- reforestation_success_eco %>%
         axis.title = element_text(face = "bold"),
         plot.title = element_text(face = "bold", size = 12))
 print(time_series_plot)
+
+
+
+facts_summary <- facts %>% group_by()

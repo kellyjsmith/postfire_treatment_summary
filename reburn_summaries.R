@@ -353,7 +353,7 @@ create_dual_axis_fire_plot <- function(data, output_file) {
       plot.title = element_text(face = "bold", size = 12),
       plot.subtitle = element_text(size = 11),
       legend.title = element_text(face = "bold"),
-      legend.box = "horizontal",
+      legend.box = "vertical",
       legend.margin = margin()
     ) +
     guides(fill = guide_legend(order = 1), color = guide_legend(order = 2))

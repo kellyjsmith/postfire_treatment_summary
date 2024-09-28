@@ -8,11 +8,14 @@ library(stringr)
 
 # Load necessary data
 treated_fires <- readRDS("treated_fires.RDS")
+st_write(treated_fires, "treated_fires_r5_00_21.shp")
 cal_eco3 <- st_read("../Data/ca_eco_l3.shp") %>%
   st_transform(3310)
 
+fire_events <- fire_events %>% mutate(fire_id = paste(Incid_Name, Event_ID, sep="_"))
+
 # Intersect treated fires with ecoregions
-treated_fires_eco <- treated_fires %>%
+treated_fires_eco <- fire_events %>%
   st_transform(3310) %>%
   st_intersection(cal_eco3 %>% select(US_L3NAME)) %>%
   group_by(US_L3NAME, Ig_Year, fire_id) %>%
@@ -109,6 +112,10 @@ treated_fires_veg_severity_eco <- summarize_treated_fires_veg_severity_eco(treat
 saveRDS(treated_fires_veg_severity_eco, "treated_fires_veg_severity_eco_summary.RDS")
 st_write(treated_fires_veg_severity_eco, "treated_fires_veg_severity_eco_summary.shp", append = FALSE)
 write.csv(treated_fires_veg_severity_eco %>% st_drop_geometry(), "treated_fires_veg_severity_eco_summary.csv", row.names = FALSE)
+
+treated_fires_veg_severity_eco <- readRDS("treated_fires_veg_severity_eco.RDS")
+
+
 
 # Calculate areas and percentages by vegetation type, severity class, and ecoregion
 treated_fires_severity_year <- treated_fires_veg_severity_eco %>%
@@ -252,10 +259,13 @@ library(scales)
 
 # Assuming treated_fires_veg_severity_eco is already loaded
 
+treated_fires_veg_severity_eco_data <- treated_fires_veg_severity_eco %>% 
+  filter(Severity_Class != "Non-Processing Area",
+         Severity_Class != "Increased Greenness")
+
 # Prepare the data
-burned_area_distribution <- treated_fires_veg_severity_eco %>%
+burned_area_distribution <- treated_fires_veg_severity_eco_data %>%
   st_drop_geometry() %>%
-  filter(Severity_Class != "Non-Processing Area") %>%
   group_by(US_L3NAME, Ig_Year, Severity_Class) %>%
   summarize(Burned_Acres = sum(Acres, na.rm = TRUE), .groups = "drop") %>%
   mutate(US_L3NAME = str_replace_all(US_L3NAME, ecoregion_names))
@@ -300,7 +310,7 @@ ggplot(burned_area_top5, aes(x = Ig_Year, y = Percentage, fill = Severity_Class)
                      expand = c(0, 0),
                      breaks = seq(0, 100, by = 25)) +
   labs(title = "Distribution of Burned Area by Severity Class Over Time",
-       subtitle = "Top 5 Ecoregions in USFS Region 5, 2000-2021",
+       subtitle = "USFS Region 5 | Fires 2000-2021",
        x = "Ignition Year",
        y = "Percentage of Burned Area") +
   theme_bw(base_size = 11) +

@@ -22,14 +22,17 @@ post_process_processed_activities <- function(assigned_activities, fires) {
     relevant_fires <- fires[intersecting_fires, ]
     
     # Calculate time differences
-    time_diffs <- activity$year - relevant_fires$Ig_Year
+    time_diffs <- relevant_fires$Ig_Year - activity$year
+    
+    # Count only reburns that occurred after the activity
+    post_activity_reburns <- sum(time_diffs > 0)
     
     # Check if the current assignment has a time difference > 11 years
     current_diff <- activity$year - activity$assigned_fire_year
     
     if (current_diff > 11) {
       # Find the most recent fire that's not after the activity
-      valid_fires <- time_diffs >= 0
+      valid_fires <- time_diffs <= 0
       if (any(valid_fires)) {
         most_recent_fire <- relevant_fires[valid_fires, ][which.max(relevant_fires$Ig_Year[valid_fires]), ]
         
@@ -43,7 +46,7 @@ post_process_processed_activities <- function(assigned_activities, fires) {
     }
     
     # Add reburns column
-    activity$reburns <- length(intersecting_fires) - 1
+    activity$reburns <- post_activity_reburns
     
     return(activity)
   }
@@ -63,7 +66,6 @@ post_process_processed_activities <- function(assigned_activities, fires) {
 }
 
 
-
 # Workflow after the function
 
 # Run Post-processing
@@ -78,6 +80,8 @@ processed_activities <- processed_activities %>%
 
 # Save the initially processed activities
 saveRDS(processed_activities, "processed_activities_initial.RDS")
+
+processed_activities <- readRDS("processed_activities_initial.RDS")
 
 # Identify columns to keep from the original activities data
 keep_columns <- c(keep, "Event_ID", "activity_area", "facts_polygon_id", "assigned_fire", "reburns")

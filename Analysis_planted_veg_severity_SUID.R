@@ -13,41 +13,44 @@ processed_activities <- readRDS("processed_activities_final.RDS")
 cal_eco3 <- st_read("../Data/ca_eco_l3.shp") %>%
   st_transform(3310)
 
-# Update net_activities with reburn information and intersect with ecoregions
 net_planting_eco_suid <- processed_activities %>%
   filter(type_labels %in% c("Initial Planting", "Fill-in or Replant")) %>%
-  st_collection_extract("POLYGON") %>%
+  st_collection_extract() %>%
   st_transform(3310) %>%
   mutate(activity_area = st_area(.)) %>%
-  group_by(fire_id, Ig_Year) %>%
+  group_by(fire_id, year) %>%
   mutate(
     gross_acres = sum(as.numeric(activity_area)) / 4046.86,
     mean_unit_size = mean(as.numeric(activity_area)) / 4046.86
   ) %>%
   ungroup() %>%
   st_intersection(cal_eco3 %>% select(US_L3NAME)) %>%
-  group_by(US_L3NAME, Ig_Year, fire_id, SUID) %>%
+  group_by(US_L3NAME, Ig_Year, fire_id, SUID, year) %>%
   summarize(
     geometry = st_union(geometry),
     n_plantings = n(),
     net_acres = sum(as.numeric(st_area(geometry))) / 4046.86,
     gross_acres = first(gross_acres),
-    mean_unit_size = first(mean_unit_size),
-    mean_reburns = mean(reburns, na.rm = TRUE),
-    min_reburns = min(reburns, na.rm = TRUE),
-    max_reburns = max(reburns, na.rm = TRUE),
-    mean_diff = mean(diff_years, na.rm = TRUE),
-    min_diff = min(diff_years, na.rm = TRUE),
-    max_diff = max(diff_years, na.rm = TRUE),
-    mean_prod = mean(as.numeric(PRODUCTIVI), na.rm = TRUE),
-    min_prod = min(as.numeric(PRODUCTIVI), na.rm = TRUE),
-    max_prod = max(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    diff_years = first(diff_years),
+    prod = first(PRODUCTIVI),
+    reburns = first(reburns),
     .groups = "drop"
   )
 
 saveRDS(net_planting_eco_suid, "net_planting_eco_suid.RDS")
 
 net_planting_eco_suid <- readRDS("net_planting_eco_suid.RDS")
+
+
+reburn_summary <- net_planting_eco_suid %>%
+  summarize(
+    total_planted_acres = sum(net_acres),
+    reburned_acres = sum(net_acres[reburns > 0]),
+    percent_reburned = (reburned_acres / total_planted_acres) * 100
+  )
+
+print(reburn_summary)
+
 
 
 # Assuming net_planting_eco_suid is already loaded
@@ -64,8 +67,8 @@ net_planting_summary <- net_planting_eco_suid %>%
     max_reburns = max(max_reburns),
     mean_unit_acres = mean(mean_unit_size),
     mean_diff = mean(mean_diff)
-  ) %>% 
-  group_by(US_L3NAME) %>% 
+  ) %>% ungroup() %>% 
+  # group_by(US_L3NAME) %>% 
   summarize(
     n_plantings = sum(n_plantings),
     total_acres = sum(total_acres),
@@ -134,34 +137,26 @@ summarize_veg_severity_eco_suid <- function(areas, evt_raster_file, evt_csv_file
                                       labels = c("Unburned to Low", "Low", "Moderate", "High", 
                                                  "Increased Greenness", "Non-Processing Area"))
       
-      summary <- values %>%
-        group_by(Severity_Class, Veg_Type) %>%
-        summarise(Acres = n() * cell_size_acres, .groups = "drop") %>%
-        mutate(Proportion = Acres / sum(Acres))
-      
-      summary$US_L3NAME <- current_eco
-      summary$Ig_Year <- ig_year
-      summary$fire_id <- current_fire_id
-      summary$SUID <- current_suid
-      
-      summary <- summary %>%
+      summary <- fire_data %>%
+        st_drop_geometry() %>%
+        select(year, diff_years, prod, reburns, gross_acres, n_plantings) %>%
+        mutate(total_pixels = nrow(values)) %>%
+        left_join(
+          values %>%
+            group_by(Severity_Class, Veg_Type) %>%
+            summarise(Pixels = n(), .groups = "drop") %>%
+            mutate(Proportion = Pixels / sum(Pixels)),
+          by = character()
+        ) %>%
         mutate(
-          n_plantings = sum(fire_data$n_plantings),
-          mean_diff = fire_data$mean_diff[1],
-          min_diff = fire_data$min_diff[1],
-          max_diff = fire_data$max_diff[1],
-          mean_prod = fire_data$mean_prod[1],
-          min_prod = fire_data$min_prod[1],
-          max_prod = fire_data$max_prod[1],
-          mean_reburns = fire_data$mean_reburns[1],
-          min_reburns = fire_data$min_reburns[1],
-          max_reburns = fire_data$max_reburns[1],
-          gross_acres = fire_data$gross_acres[1],
-          mean_unit_size = fire_data$mean_unit_size[1],
-          year = fire_data$year[1],
-          n_reburns = fire_data$mean_reburns[1],
-          geometry = st_union(st_geometry(fire_data))
+          Acres = Pixels * cell_size_acres,
+          US_L3NAME = current_eco,
+          Ig_Year = ig_year,
+          fire_id = current_fire_id,
+          SUID = current_suid
         )
+      
+      summary$geometry <- st_union(st_geometry(fire_data))
       
       return(summary)
     }, .keep = TRUE) %>%
@@ -174,7 +169,6 @@ summarize_veg_severity_eco_suid <- function(areas, evt_raster_file, evt_csv_file
 }
 
 
-
 # Load veg and severity locations
 evt_raster_file <- "../Data/landfire/LC23_EVT_240.tif"
 evt_csv_file <- "../Data/landfire/LF23_EVT_240.csv"
@@ -183,6 +177,7 @@ severity_folder <- "../Data/Severity"
 # Run the function
 planted_veg_severity_eco_suid <- summarize_veg_severity_eco_suid(net_planting_eco_suid, evt_raster_file, evt_csv_file, severity_folder)
 
+
 # Save results
 saveRDS(planted_veg_severity_eco_suid, "planted_veg_severity_eco_suid.RDS")
 st_write(planted_veg_severity_eco_suid, "planted_veg_severity_eco_suid.shp", append = FALSE)
@@ -190,49 +185,55 @@ write.csv(planted_veg_severity_eco_suid %>% st_drop_geometry(), "planted_veg_sev
 
 planted_veg_severity_eco_suid <- readRDS("planted_veg_severity_eco_suid.RDS")
 
-# Summary function with success score
+# Summary function with success score and map_labels
 summarize_with_success_score <- function(data) {
   data %>%
-    group_by(fire_id, SUID, US_L3NAME, Ig_Year, year, n_reburns) %>%
+    group_by(US_L3NAME, fire_id, year, SUID, Ig_Year) %>%  # Add Ig_Year to grouping
     summarize(
-      Total_Acres = sum(Acres),
-      Conifer_Acres = sum(Acres[Veg_Type == "Conifer"]),
-      Shrubland_Acres = sum(Acres[Veg_Type == "Shrubland"]),
-      Hardwood_Acres = sum(Acres[Veg_Type == "Hardwood"]),
-      Grassland_Acres = sum(Acres[Veg_Type == "Grassland"]),
-      Other_Acres = sum(Acres[Veg_Type == "Other"]),
-      Conifer_Percent = Conifer_Acres / Total_Acres * 100,
-      Shrubland_Percent = Shrubland_Acres / Total_Acres * 100,
-      Hardwood_Percent = Hardwood_Acres / Total_Acres * 100,
-      Grassland_Percent = Grassland_Acres / Total_Acres * 100,
-      Other_Percent = Other_Acres / Total_Acres * 100,
-      Mean_Productivity = mean(mean_prod, na.rm = TRUE),
-      Mean_Years_Since_Fire = mean(mean_diff, na.rm = TRUE),
-      Mean_Reburns = mean(mean_reburns, na.rm = TRUE),
+      Tot_Ac = sum(Acres),
+      Con_Ac = sum(Acres[Veg_Type == "Conifer"]),
+      Shb_Ac = sum(Acres[Veg_Type == "Shrubland"]),
+      HW_Ac = sum(Acres[Veg_Type == "Hardwood"]),
+      Grs_Ac = sum(Acres[Veg_Type == "Grassland"]),
+      Oth_Ac = sum(Acres[Veg_Type == "Other"]),
+      Con_Pct = Con_Ac / Tot_Ac * 100,
+      Shb_Pct = Shb_Ac / Tot_Ac * 100,
+      HW_Pct = HW_Ac / Tot_Ac * 100,
+      Grs_Pct = Grs_Ac / Tot_Ac * 100,
+      Oth_Pct = Oth_Ac / Tot_Ac * 100,
+      Prod = first(prod),
+      Mean_Diff = mean(diff_years, na.rm = TRUE),
+      Reburns = max(reburns, na.rm = TRUE),
       .groups = "drop"
     ) %>%
     mutate(
-      Conifer_Shrub_Ratio = Conifer_Acres / (Shrubland_Acres + 0.1),
-      Success_Score = (Conifer_Percent + (Conifer_Shrub_Ratio / (1 + Conifer_Shrub_Ratio)) * 100) / 2
+      Con_Shb_Ra = Con_Ac / (Shb_Ac + 0.1),
+      Refor_Score = (Con_Pct + (Con_Shb_Ra / (1 + Con_Shb_Ra)) * 100) / 2,
+      map_labels = sprintf("SUID: %s\nNet Acres: %.1f\nReforestation Score: %.1f\nPct Shrub: %.1f\nPlant Year: %d\nReburns: %d", 
+                           SUID, Tot_Ac, Refor_Score, Shb_Pct, year, Reburns)
     ) %>%
     ungroup()
 }
 
 planted_veg_summary <- summarize_with_success_score(planted_veg_severity_eco_suid)
 
-# Round numeric columns to two decimal places
+# Round numeric columns to one decimal place
 planted_veg_summary <- planted_veg_summary %>%
-  mutate(across(where(is.numeric), ~round(., 2)))
+  mutate(across(where(is.numeric), ~round(., 1)))
+
+saveRDS(planted_veg_summary, "planted_veg_summary.RDS")
 
 # Display the first few rows of the summary
 print(head(planted_veg_summary))
 
 # Save the summary as a shapefile
-st_write(planted_veg_summary, "postfire_plantation_success_suid.shp", append = FALSE)
+st_write(planted_veg_summary, "postfire_plantation_success_labels_final.shp", append = FALSE)
 
 # Optionally, save the summary to a CSV file
 write.csv(planted_veg_summary, "planted_veg_summary_by_fire.csv", row.names = FALSE)
 
+
+vegetation_activities_suid <- st_read("vegetation_activities_SUID.shp")
 
 
 
@@ -352,3 +353,22 @@ ggsave("planted_veg_severity_distribution_ecoregions.png", planted_veg_severity_
 
 # Save the table
 write.csv(veg_severity_suid_table, "planted_severity_eco_table.csv", row.names = FALSE)
+
+
+# Calculate total planted acres and reburned acres
+reburn_summary_severity <- planted_veg_severity_eco_suid %>%
+  group_by(fire_id) %>%
+  summarize(
+    total_planted_acres = sum(Acres, na.rm = TRUE),
+    reburned_acres = sum(Acres[reburns > 0]),
+    high_severity_reburned_acres = sum(Acres[reburns > 0 & Severity_Class == "High"])
+  ) %>%
+  summarize(
+    total_planted_acres = sum(total_planted_acres),
+    total_reburned_acres = sum(reburned_acres),
+    total_high_severity_reburned_acres = sum(high_severity_reburned_acres),
+    percent_reburned = (total_reburned_acres / total_planted_acres) * 100,
+    percent_high_severity_reburned = (total_high_severity_reburned_acres / total_planted_acres) * 100
+  )
+
+print(reburn_summary_severity)
