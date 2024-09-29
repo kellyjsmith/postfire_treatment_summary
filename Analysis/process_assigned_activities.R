@@ -6,7 +6,7 @@ assigned_activities <- facts_fires$assigned_activities
 intersected_activities <- facts_fires$fires_activities
 
 
-post_process_processed_activities <- function(assigned_activities, fires) {
+post_process_assigned_activities <- function(assigned_activities, fires) {
   
   # Filter out NAs
   assigned_activities <- filter(assigned_activities, !is.na(assigned_fire))
@@ -72,7 +72,7 @@ post_process_processed_activities <- function(assigned_activities, fires) {
 # Workflow after the function
 
 # Run Post-processing
-processed_activities <- post_process_processed_activities(
+processed_activities <- post_process_assigned_activities(
   facts_fires$assigned_activities, facts_fires$fires)
 
 # Apply initial cleaning steps
@@ -85,6 +85,7 @@ processed_activities <- processed_activities %>%
 saveRDS(processed_activities, "processed_activities_initial.RDS")
 
 processed_activities <- readRDS("processed_activities_initial.RDS")
+
 
 # Identify columns to keep from the original activities data
 keep_columns <- c(keep, "Event_ID", "activity_area", "facts_polygon_id", "assigned_fire", "reburns")
@@ -180,6 +181,73 @@ processed_activities <- processed_activities %>%
 
 # Save the final processed activities
 saveRDS(processed_activities, "processed_activities_final.RDS")
+
+cal_eco3 <- st_read("../Data/ca_eco_l3.shp") %>%
+  st_transform(3310)
+
+# Update net_activities with reburn information and intersect with ecoregions
+planted_net_activities_eco <- processed_activities %>%
+  filter(type_labels %in% c("Initial Planting", "Fill-in or Replant")) %>%
+  st_collection_extract("POLYGON") %>%
+  st_transform(3310) %>%
+  mutate(activity_area = st_area(.)) %>%
+  group_by(fire_id, Ig_Year) %>%
+  mutate(
+    gross_acres = sum(as.numeric(activity_area)) / 4046.86,
+    mean_unit_size = mean(as.numeric(activity_area)) / 4046.86
+  ) %>%
+  ungroup() %>%
+  st_intersection(cal_eco3 %>% select(US_L3NAME)) %>%
+  group_by(US_L3NAME, Ig_Year, fire_id, type_labels) %>%
+  summarize(
+    geometry = st_union(geometry),
+    n_plantings = n(),
+    net_acres = sum(as.numeric(st_area(geometry))) / 4046.86,
+    gross_acres = first(gross_acres),
+    mean_unit_size = first(mean_unit_size),
+    mean_reburns = mean(reburns, na.rm = TRUE),
+    min_reburns = min(reburns, na.rm = TRUE),
+    max_reburns = max(reburns, na.rm = TRUE),
+    mean_diff = mean(diff_years, na.rm = TRUE),
+    min_diff = min(diff_years, na.rm = TRUE),
+    max_diff = max(diff_years, na.rm = TRUE),
+    mean_prod = mean(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    min_prod = min(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    max_prod = max(as.numeric(PRODUCTIVI), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+saveRDS(planted_net_activities_eco, "planted_net_activities_eco_with_reburns.RDS")
+
+
+net_planting_eco_suid <- processed_activities %>%
+  filter(type_labels %in% c("Initial Planting", "Fill-in or Replant")) %>%
+  st_collection_extract() %>%
+  st_transform(3310) %>%
+  mutate(activity_area = st_area(.)) %>%
+  group_by(fire_id, year) %>%
+  mutate(
+    gross_acres = sum(as.numeric(activity_area)) / 4046.86,
+    mean_unit_size = mean(as.numeric(activity_area)) / 4046.86
+  ) %>%
+  ungroup() %>%
+  st_intersection(cal_eco3 %>% select(US_L3NAME)) %>%
+  group_by(US_L3NAME, Ig_Year, fire_id, SUID, year) %>%
+  summarize(
+    geometry = st_union(geometry),
+    n_plantings = n(),
+    net_acres = sum(as.numeric(st_area(geometry))) / 4046.86,
+    gross_acres = first(gross_acres),
+    diff_years = first(diff_years),
+    prod = first(PRODUCTIVI),
+    reburns = first(reburns),
+    .groups = "drop"
+  )
+
+saveRDS(net_planting_eco_suid, "net_planting_eco_suid.RDS")
+
+
+
 
 #### Clean assigned and intersected activities (no post-processing)
 
